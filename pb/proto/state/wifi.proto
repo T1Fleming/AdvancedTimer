@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package BSB_State;
+
+enum WifiConnectionStatus {
+    CONNECTED = 0;
+    CONNECTING = 1;
+    DISCONNECTING = 2;
+    RECONNECTING = 3;
+}
+
+enum WifiSecurity {
+    UNKNOWN = 0;
+    OPEN = 1;
+    WPA = 2;
+    WPA2 = 3;
+    WEP = 4;
+    WPA_WPA2 = 5;
+    WPA3 = 6;
+    WPA2_WPA3 = 7;
+}
+
+enum IpConfigurationMethod {
+    DHCP = 0;
+    STATIC = 1;
+}
+
+enum IpProtocol {
+    IPV4 = 0;
+    IPV6 = 1;
+}
+
+message WifiStateUnknown {
+}
+
+message WifiStateInactive {
+}
+
+message WifiStateActive {
+    WifiConnectionStatus status = 1;
+    string ssid = 2;
+    string bssid = 3;
+    uint32 channel = 4;
+    sint32 rssi = 5;
+    WifiSecurity security = 6;
+}
+
+message IpAddress {
+    IpProtocol protocol = 1;
+    IpConfigurationMethod method = 2;
+    string address = 3;
+    string gateway = 4;
+    string netmask = 5;
+}
+
+message Wifi {
+    oneof wifi_state {
+        WifiStateUnknown unknown = 1;
+        WifiStateInactive inactive = 2;
+        WifiStateActive active = 3;
+    }
+
+    repeated IpAddress ip_addresses = 4;
+}

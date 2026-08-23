@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package BSB_Input;
+
+enum Button {
+    OK = 0;
+    BACK = 1;
+    START = 2;
+}
+
+enum ButtonAction {
+    PRESS = 0;
+    RELEASE = 1;
+}
+
+enum SwitchPosition {
+    BUSY = 0;
+    CUSTOM = 1;
+    OFF = 2;
+    APPS = 3;
+    SETTINGS = 4;
+}
+
+message ButtonEvent {
+    Button button = 1;
+    ButtonAction action = 2;
+}
+
+message SwitchEvent {
+    SwitchPosition position = 1;
+}
+
+message EncoderEvent {
+    sint32 delta = 1;
+}
+
+message InputEvent {
+    oneof event {
+        ButtonEvent button_event = 1;
+        SwitchEvent switch_event = 2;
+        EncoderEvent encoder_event = 3;
+    }
+}

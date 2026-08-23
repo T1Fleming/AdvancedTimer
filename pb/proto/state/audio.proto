@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package BSB_State;
+
+message AudioVolume {
+    uint32 volume = 1;
+}

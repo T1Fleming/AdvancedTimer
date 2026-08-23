@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package BSB_State;
+
+enum BatteryStatus {
+    DISCHARGING = 0;
+    CHARGING = 1;
+    CHARGED = 2;
+}
+
+message UnknownPowerState {
+}
+
+message PowerState {
+    BatteryStatus battery_status = 1;
+    uint32 battery_charge_percent = 2;
+    uint32 battery_voltage_mv = 3;
+    sint32 battery_current_ma = 4;
+    uint32 usb_voltage_mv = 5;
+}
+
+message Power {
+    oneof state {
+        UnknownPowerState unknown = 1;
+        PowerState known = 2;
+    }
+}

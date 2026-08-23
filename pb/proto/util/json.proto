@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package BSB_Util;
+
+enum Compression {
+    PLAIN = 0;
+    GZIP = 1;
+}
+
+message Json {
+    Compression compression = 1;
+    bytes data = 2;
+}

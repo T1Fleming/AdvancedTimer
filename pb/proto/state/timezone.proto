@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package BSB_State;
+
+message Timezone {
+    string name = 1; /* Timezone name */
+    sint32 offset = 2; /* Offset from UTC in minutes */
+    string abbr = 3; /* Timezone abbreviation (e.g. CEST) */
+}

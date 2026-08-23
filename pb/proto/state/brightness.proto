@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package BSB_State;
+
+message BrightnessAutomatic {
+}
+
+message BrightnessManual {
+    uint32 brightness = 1;
+}
+
+message Brightness {
+    oneof setting {
+        BrightnessAutomatic automatic = 1;
+        BrightnessManual manual = 2;
+    }
+
+    uint32 actual_brightness = 3;
+}

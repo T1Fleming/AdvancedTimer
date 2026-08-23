@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package BSB_State.Ble;
+
+enum ServiceStatus {
+    RESET = 0; /* Service has just been created. Will move to INITIALIZATION when it creates all inner objects. */
+    INITIALIZATION = 1; /* Service performs initialization sequence for all inner ble services. U5 also sends init data to 917 to help it create its services. */
+    READY = 2; /* All init sequences are done. All inner services configured, and both u5 and 917 are ready to work. But ble is still disabled. */
+    ADVERTISING = 3; /* Ble enabled, device is not paired and is visible to all. */
+    CONNECTABLE = 4; /* Ble enabled, device is paired and waits for a remote device to connect. */
+    CONNECTED = 5; /* Remote device connected. */
+    ERROR = 6; /* Internal error. */
+}
+
+message Ble {
+    ServiceStatus status = 1;
+    optional string remote_address = 2;
+}

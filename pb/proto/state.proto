@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+import "state/device_name.proto";
+import "state/brightness.proto";
+import "state/power.proto";
+import "state/audio.proto";
+import "state/wifi.proto";
+import "state/update.proto";
+import "state/timezone.proto";
+import "state/matter.proto";
+import "state/ble.proto";
+import "frame.proto";
+import "timer.proto";
+import "input.proto";
+import "error.proto";
+
+package BSB_State;
+
+message StateUpdate {
+    oneof state {
+        BSB_State.DeviceName device_name = 1;
+
+        BSB_State.Power power = 2;
+
+        BSB_State.Brightness brightness = 3;
+
+        BSB_State.AudioVolume audio_volume = 4;
+
+        BSB_State.Wifi wifi = 5;
+
+        BSB_Update.UpdateState update_state = 6;
+
+        BSB_Update.CheckState update_check = 7;
+
+        BSB_State.Timezone timezone = 8;
+
+        BSB_State.Matter matter = 9;
+
+        BSB_Frame.Frame frame = 10;
+
+        BSB_Input.InputEvent input = 11;
+
+        BSB_Timer.Timer timer = 12;
+
+        BSB_State.Ble.Ble ble = 13;
+
+        BSB_Update.AutoUpdateState auto_update_state = 14;
+
+        BSB_Timer.Profiles timer_profiles = 15;
+    }
+}
+
+message State {
+    fixed64 timestamp = 1;
+
+    repeated StateUpdate updates = 2;
+
+    optional BSB_Error.Error error = 3;
+}

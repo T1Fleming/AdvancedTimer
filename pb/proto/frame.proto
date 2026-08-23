@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package BSB_Frame;
+
+enum Encoding {
+    PLAIN = 0;
+    RUN_LENGTH = 1;
+    DEFLATE = 2;
+    DEFLATE_RUN_LENGTH = 3;
+}
+
+enum PixelFormat {
+    RGB888 = 0;
+    L8 = 1;
+    L4 = 2;
+}
+
+enum Screen {
+    FRONT = 0;
+    BACK = 1;
+}
+
+message Frame {
+    Screen screen = 1;
+
+    uint32 width = 2;
+    uint32 height = 3;
+
+    Encoding encoding = 4;
+    PixelFormat pixel_format = 5;
+
+    bytes data = 6;
+}

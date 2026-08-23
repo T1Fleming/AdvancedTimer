@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package BSB_Update;
+
+enum UpdateEvent {
+    SESSION_START = 0; /* Update process started (lock acquired) */
+    SESSION_STOP = 1; /* Update process stopped (lock released) */
+    ACTION_BEGIN = 2; /* Action started (download/unpack/prepare/reboot) */
+    ACTION_DONE = 3; /* Action completed with result status */
+    DETAIL_CHANGE = 4; /* Status detail string changed (e.g., download state message) */
+    ACTION_PROGRESS = 5; /* Progress update (e.g., download bytes received) */
+    EVENT_NONE = 6; /* No event (initial/idle state) */
+}
+
+enum UpdateAction {
+    DOWNLOAD = 0; /* Downloading update bundle from URL */
+    SHA_VERIFICATION = 1; /* Downloading update bundle from URL */
+    UNPACK = 2; /* Unpacking .tar archive to staging directory */
+    INSTALLATION_PREPARE = 3; /* Preparing update for installation (manifest validation, session setup) */
+    INSTALLATION_APPLY = 4; /* Rebooting device to install prepared update */
+    ACTION_NONE = 5; /* No action (initial/idle state) */
+}
+
+enum UpdateStatus {
+    OK = 0; /* Operation completed successfully */
+    BATTERY_LOW = 1; /* Battery level too low */
+    BUSY = 2; /* Update already in progress */
+    DOWNLOAD_FAILURE = 3; /* Failed to download update bundle from URL */
+    DOWNLOAD_ABORT = 4; /* Download was aborted by user */
+    SHA_MISMATCH = 5; /* Update bundle SHA256 checksum verification failed */
+    UNPACK_CREATE_STAGING_DIRECTORY_FAILURE = 6; /* Failed to create staging directory */
+    UNPACK_ARCHIVE_OPEN_FAILURE = 7; /* Failed to open .tar archive file */
+    UNPACK_ARCHIVE_UNPACK_FAILURE = 8; /* Failed to extract .tar archive contents */
+    INSTALLATION_PREPARE_MANIFEST_NOT_FOUND = 9; /* Update manifest file not found */
+    INSTALLATION_PREPARE_MANIFEST_INVALID = 10; /* Manifest file validation failed */
+    INSTALLATION_PREPARE_SESSION_CONFIG_SETUP_FAILURE = 11; /* Failed to save session configuration */
+    INSTALLATION_PREPARE_POINTER_SETUP_FAILURE = 12; /* Failed to write pointer file */
+    UNKNOWN_FAILURE = 13; /* Unknown error occurred */
+}
+
+enum CheckError {
+    NOT_AVAILABLE = 0; /* No update available */
+    FAILURE = 1; /* Failed to check for update */
+    IDLE = 2; /* No check performed (initial/idle state) */
+};
+
+enum CheckEvent {
+    START = 0; /* Update check started */
+    STOP = 1; /* Update check stopped */
+    NONE = 2; /* No event (initial/idle state) */
+}
+
+message UpdateAvailable {
+    string version = 1;
+}
+
+message UpdateUnavailable {
+    CheckError reason = 1;
+}
+
+message UpdateState {
+    UpdateEvent event = 1;
+    UpdateAction action = 2;
+    UpdateStatus status = 3;
+}
+
+message CheckState {
+    CheckEvent event = 3;
+    oneof status {
+        UpdateAvailable available = 1;
+        UpdateUnavailable unavailable = 2;
+    }
+}
+
+message AutoUpdateInterval {
+    uint32 start = 1; /* minutes since midnight */
+    uint32 end = 2; /* minutes since midnight */
+}
+
+message AutoUpdateState {
+    bool enabled = 1;
+    AutoUpdateInterval interval = 2;
+}

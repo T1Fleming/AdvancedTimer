@@ -1,0 +1,19 @@
+# Runtime data
+sessions.jsonl
+
+# Local agent and editor settings
+.claude/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# macOS
+.DS_Store

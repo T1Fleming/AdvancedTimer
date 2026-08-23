@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+import "util/json.proto";
+
+package BSB_Timer;
+
+message Profile {
+    string name = 1;
+    BSB_Util.Json json = 2;
+}
+
+message Profiles {
+    repeated Profile profiles = 1;
+}
+
+message Timer {
+    BSB_Util.Json json = 1;
+}
