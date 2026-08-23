@@ -8,8 +8,7 @@ current timer on the bar's display, and records completed sessions locally.
 
 - Python 3
 - A BUSY Bar reachable on the local network
-- The bar's API at `10.0.4.20` (change the constants in `tracker.py` if your
-  device uses another address)
+- The bar's API at `10.0.4.20` or its Wi-Fi address, `192.168.1.220`
 
 ## Setup
 
@@ -18,6 +17,16 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
+
+Create a local `.env` file to select the bar's address:
+
+```dotenv
+BUSY_BAR_IP=192.168.1.220
+```
+
+Use `BUSY_BAR_IP=10.0.4.20` for the other connection, or omit the setting to
+use `10.0.4.20` by default. Shell environment variables take precedence over
+values in `.env`.
 
 Start the tracker with:
 

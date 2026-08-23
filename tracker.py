@@ -12,6 +12,7 @@ BUSY/CUSTOM focus-timer session competing for display priority. See the plan
 for the full investigation behind this.
 """
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -23,8 +24,25 @@ import websocket
 sys.path.insert(0, str(Path(__file__).parent / "pb"))
 import state_pb2  # noqa: E402
 
-BASE = "http://10.0.4.20/api"
-WS_URL = "ws://10.0.4.20/api/status/ws"
+
+def load_env_file():
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+load_env_file()
+BUSY_BAR_IP = os.getenv("BUSY_BAR_IP", "10.0.4.20")
+BASE = f"http://{BUSY_BAR_IP}/api"
+WS_URL = f"ws://{BUSY_BAR_IP}/api/status/ws"
 APP_NAME = "time_tracker"
 PRIORITY = 90
 LOG_PATH = Path(__file__).parent / "sessions.jsonl"
