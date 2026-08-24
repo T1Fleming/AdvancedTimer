@@ -28,6 +28,7 @@ WS_URL = f"ws://{BUSY_BAR_IP}/api/status/ws"
 APP_NAME = "time_tracker"
 PRIORITY = 90
 LOG_PATH = ROOT / "sessions.jsonl"
+STATE_PATH = ROOT / "state.json"
 MAX_EVENT_AGE_MS = 2000
 
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")

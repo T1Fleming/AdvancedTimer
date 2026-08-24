@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.advancedtimer.server</string>
+
+    <!-- Replace with the absolute path to this repo's venv python. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/REPLACE/PATH/TO/AdvancedTimer/.venv/bin/python</string>
+        <string>-m</string>
+        <string>app.server</string>
+    </array>
+
+    <!-- Replace with the absolute path to this repo. -->
+    <key>WorkingDirectory</key>
+    <string>/REPLACE/PATH/TO/AdvancedTimer</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Replace with wherever you'd like logs written; the directory must
+         already exist - launchd will not create it for you. -->
+    <key>StandardOutPath</key>
+    <string>/REPLACE/PATH/TO/AdvancedTimer/logs/server.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/REPLACE/PATH/TO/AdvancedTimer/logs/server.err.log</string>
+</dict>
+</plist>

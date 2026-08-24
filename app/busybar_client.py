@@ -92,13 +92,20 @@ class BusyBarClient:
             },
         ])
 
-    async def button_events(self):
-        """Reconnect-forever async generator yielding (button, action) for real presses."""
+    async def button_events(self, on_connect=None):
+        """Reconnect-forever async generator yielding (button, action) for real presses.
+
+        Calls `on_connect()` after every successful (re)connection + subscribe, before
+        the per-message loop starts - including the very first connection, so callers
+        no longer need a separate one-time setup call before entering this loop.
+        """
         while True:
             try:
                 async with websockets.connect(config.WS_URL, open_timeout=10) as ws:
                     await ws.send(json.dumps({"enable": True}))
                     print("[ws] connected", flush=True)
+                    if on_connect is not None:
+                        await on_connect()
                     async for message in ws:
                         if not isinstance(message, (bytes, bytearray)):
                             continue

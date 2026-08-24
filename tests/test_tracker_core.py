@@ -120,3 +120,34 @@ def test_snapshot_includes_pending_details():
     assert snap["state"] == PENDING_LABEL
     assert "total_active_seconds" in snap["pending"]
     assert "segments" in snap["pending"]
+
+
+def test_to_dict_from_dict_round_trip_while_running():
+    t = Tracker()
+    t.toggle_start()
+
+    restored = Tracker.from_dict(t.to_dict())
+
+    assert restored.snapshot() == t.snapshot()
+    assert restored.virtual_start_ts() == pytest.approx(t.virtual_start_ts())
+
+
+def test_to_dict_from_dict_round_trip_while_paused():
+    t = Tracker()
+    t.toggle_start()
+    t.toggle_start()
+
+    restored = Tracker.from_dict(t.to_dict())
+
+    assert restored.snapshot() == t.snapshot()
+
+
+def test_to_dict_from_dict_round_trip_while_pending_label():
+    t = Tracker()
+    t.toggle_start()
+    t.stop()
+
+    restored = Tracker.from_dict(t.to_dict())
+
+    assert restored.snapshot() == t.snapshot()
+    assert restored.pending == t.pending
