@@ -1,3 +1,5 @@
-requests
-websocket-client
+fastapi
+uvicorn[standard]
+httpx
+websockets
 protobuf

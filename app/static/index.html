@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BUSY Bar Time Tracker</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #111; color: #eee;
+    margin: 0; padding: 24px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  #state { font-size: 14px; letter-spacing: 0.1em; color: #888; text-transform: uppercase; }
+  #elapsed { font-size: 56px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .controls { display: flex; gap: 12px; }
+  button {
+    font-size: 18px; padding: 14px 28px; border-radius: 10px; border: none;
+    background: #2a2a2a; color: #eee; min-width: 96px;
+  }
+  button:active { background: #3a3a3a; }
+  button:disabled { opacity: 0.35; }
+  #primary { background: #1f7a3f; }
+  #stop { background: #7a2020; }
+  #label-panel { display: none; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 320px; }
+  #label-panel input {
+    width: 100%; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #444;
+    background: #1a1a1a; color: #eee; box-sizing: border-box;
+  }
+  #label-panel .row { display: flex; gap: 12px; width: 100%; }
+  #label-panel button { flex: 1; }
+  #sessions { width: 100%; max-width: 420px; }
+  #sessions h2 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }
+  #sessions ul { list-style: none; margin: 0; padding: 0; }
+  #sessions li {
+    display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #222;
+    font-size: 14px;
+  }
+  #sessions .label { color: #eee; }
+  #sessions .meta { color: #888; }
+</style>
+</head>
+<body>
+  <div id="state">idle</div>
+  <div id="elapsed">00:00</div>
+
+  <div class="controls" id="controls">
+    <button id="primary">Start</button>
+    <button id="stop" disabled>Stop</button>
+  </div>
+
+  <div id="label-panel">
+    <input id="label-input" type="text" placeholder="Session label (optional)" autocomplete="off">
+    <div class="row">
+      <button id="skip">Skip</button>
+      <button id="save">Save</button>
+    </div>
+  </div>
+
+  <div id="sessions">
+    <h2>Recent sessions</h2>
+    <ul id="sessions-list"></ul>
+  </div>
+
+<script>
+const stateEl = document.getElementById('state');
+const elapsedEl = document.getElementById('elapsed');
+const controlsEl = document.getElementById('controls');
+const primaryBtn = document.getElementById('primary');
+const stopBtn = document.getElementById('stop');
+const labelPanel = document.getElementById('label-panel');
+const labelInput = document.getElementById('label-input');
+const saveBtn = document.getElementById('save');
+const skipBtn = document.getElementById('skip');
+const sessionsList = document.getElementById('sessions-list');
+
+let current = { state: 'IDLE', accumulated_seconds: 0, current_segment_start: null };
+let tickHandle = null;
+
+function formatDuration(totalSeconds) {
+  totalSeconds = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+function liveElapsed() {
+  let seconds = current.accumulated_seconds || 0;
+  if (current.state === 'RUNNING' && current.current_segment_start) {
+    seconds += (Date.now() - Date.parse(current.current_segment_start)) / 1000;
+  }
+  return seconds;
+}
+
+function render() {
+  stateEl.textContent = current.state.replace('_', ' ').toLowerCase();
+
+  if (current.state === 'PENDING_LABEL' && current.pending) {
+    elapsedEl.textContent = formatDuration(current.pending.total_active_seconds);
+  } else {
+    elapsedEl.textContent = formatDuration(liveElapsed());
+  }
+
+  controlsEl.style.display = current.state === 'PENDING_LABEL' ? 'none' : 'flex';
+  labelPanel.style.display = current.state === 'PENDING_LABEL' ? 'flex' : 'none';
+
+  if (current.state === 'PENDING_LABEL') return;
+
+  primaryBtn.textContent = current.state === 'RUNNING' ? 'Pause'
+    : current.state === 'PAUSED' ? 'Resume' : 'Start';
+  stopBtn.disabled = current.state === 'IDLE';
+
+  if (tickHandle) clearInterval(tickHandle);
+  if (current.state === 'RUNNING') {
+    tickHandle = setInterval(() => { elapsedEl.textContent = formatDuration(liveElapsed()); }, 250);
+  }
+}
+
+function applySnapshot(snapshot) {
+  current = snapshot;
+  render();
+}
+
+async function postAction(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  applySnapshot(await res.json());
+}
+
+primaryBtn.addEventListener('click', () => postAction('/api/actions/start-toggle'));
+stopBtn.addEventListener('click', () => postAction('/api/actions/stop'));
+saveBtn.addEventListener('click', () => {
+  postAction('/api/actions/label', { label: labelInput.value });
+  labelInput.value = '';
+});
+skipBtn.addEventListener('click', () => {
+  postAction('/api/actions/label', { label: '' });
+  labelInput.value = '';
+});
+
+function renderSessions(sessions) {
+  sessionsList.innerHTML = '';
+  for (const s of sessions) {
+    const li = document.createElement('li');
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = s.label || '(no label)';
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = formatDuration(s.total_active_seconds);
+    li.appendChild(label);
+    li.appendChild(meta);
+    sessionsList.appendChild(li);
+  }
+}
+
+async function loadSessions() {
+  const res = await fetch('/api/sessions?limit=20');
+  renderSessions(await res.json());
+}
+
+async function init() {
+  const res = await fetch('/api/state');
+  applySnapshot(await res.json());
+  loadSessions();
+
+  const source = new EventSource('/api/events');
+  source.onmessage = (e) => {
+    const snapshot = JSON.parse(e.data);
+    const wasPending = current.state === 'PENDING_LABEL';
+    applySnapshot(snapshot);
+    if (wasPending && snapshot.state !== 'PENDING_LABEL') loadSessions();
+  };
+}
+
+init();
+</script>
+</body>
+</html>
