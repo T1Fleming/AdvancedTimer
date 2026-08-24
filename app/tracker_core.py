@@ -33,6 +33,27 @@ class Tracker:
         self.accumulated = 0.0
         self.pending = None  # finalized session data, set while PENDING_LABEL
 
+    def to_dict(self):
+        return {
+            "app_state": self.app_state,
+            "session_start": self.session_start,
+            "segments": self.segments,
+            "current_segment_start": self.current_segment_start,
+            "accumulated": self.accumulated,
+            "pending": self.pending,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        t = cls()
+        t.app_state = data["app_state"]
+        t.session_start = data["session_start"]
+        t.segments = data["segments"]
+        t.current_segment_start = data["current_segment_start"]
+        t.accumulated = data["accumulated"]
+        t.pending = data["pending"]
+        return t
+
     def virtual_start_ts(self):
         """Timestamp the on-device countdown element should count up from."""
         return (self.current_segment_start or time.time()) - self.accumulated

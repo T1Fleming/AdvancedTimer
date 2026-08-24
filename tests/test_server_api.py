@@ -7,15 +7,16 @@ from app import config
 from app.server import app, busybar, tracker
 
 
-async def _empty_button_events():
+async def _empty_button_events(on_connect=None):
     return
     yield  # pragma: no cover - makes this a (non-yielding) async generator
 
 
 @pytest.fixture(autouse=True)
 def isolate(tmp_path, monkeypatch):
-    """Isolate sessions.jsonl and stub out all real BUSY Bar device I/O."""
+    """Isolate sessions.jsonl/state.json and stub out all real BUSY Bar device I/O."""
     monkeypatch.setattr(config, "LOG_PATH", tmp_path / "sessions.jsonl")
+    monkeypatch.setattr(config, "STATE_PATH", tmp_path / "state.json")
     tracker._reset()
     for method in ("force_apps_mode", "draw_running", "draw_paused", "draw_pending_label", "clear_display", "aclose"):
         monkeypatch.setattr(busybar, method, AsyncMock())
