@@ -290,6 +290,17 @@ simplifications are documented in `stats.html`'s own comments, mirroring how
 the server's - a deliberate, documented assumption that browser and server are
 effectively always the same machine for this single-user, LAN-only app.
 
+**Layout gotcha**: `#content` (the section wrapping everything below the
+heading, toggled via `[hidden]` for the empty-history state) must itself be
+`display:flex; flex-direction:column; align-items:center; width:100%` - the
+same rule `main` uses. A plain, unstyled `<div>` as a flex item of a
+non-`stretch` flex container sizes to fit its content rather than filling the
+available width, so every child inside it (each written as `width:100%;
+max-width:760px`, expecting to fill *some* real container) silently collapsed
+to a much narrower, content-driven width instead. Any future wrapper div added
+inside `main` needs the same treatment, or it will quietly re-shrink everything
+inside it the same way.
+
 **Chart**: a hand-rolled SVG stacked bar chart (no library), one bar per bucket
 in a fixed-size window (7 days / 6 weeks / 6 months) that pages via prev/next
 controls, reset to the window containing today whenever granularity changes. To

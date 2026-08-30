@@ -14,6 +14,14 @@
   main {
     display: flex; flex-direction: column; align-items: center; gap: 24px;
   }
+  /* Without its own flex context, #content (a plain div, toggled via [hidden])
+     has no defined width as a flex item of main - it shrinks to whatever its
+     narrowest content demands instead of filling the available width, which
+     was silently capping every child below its own max-width. */
+  #content {
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+    width: 100%;
+  }
 
   /* Available to screen readers, removed from the visual layout. */
   .visually-hidden {
@@ -58,7 +66,7 @@
   /* --- Controls row: one row, above everything it scopes --- */
   #controls-row {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    width: 100%; max-width: 640px; flex-wrap: wrap;
+    width: 100%; max-width: 760px; flex-wrap: wrap;
   }
   #granularity { display: flex; gap: 4px; }
   #granularity button.active { background: #3a3a3a; }
@@ -67,12 +75,12 @@
   #period-label { color: #888; font-size: 13px; min-width: 180px; text-align: center; }
 
   /* --- Chart --- */
-  #chart-card { width: 100%; max-width: 640px; }
+  #chart-card { width: 100%; max-width: 760px; }
   #chart-empty { color: #888; font-size: 14px; text-align: center; padding: 40px 0; }
   #chart { width: 100%; height: auto; display: block; }
   .gridline { stroke: #222; stroke-width: 1; }
-  .axis-label { fill: #888; font-size: 11px; }
-  .grid-label { fill: #888; font-size: 10px; }
+  .axis-label { fill: #888; font-size: 12px; }
+  .grid-label { fill: #888; font-size: 11px; }
   .seg { cursor: pointer; }
   .seg:hover, .seg:focus-visible { opacity: 0.85; }
 
@@ -87,7 +95,7 @@
   #chart-tooltip .name { color: #888; margin-left: 6px; }
 
   /* --- Breakdown list (also serves as the chart's legend) --- */
-  #breakdown { width: 100%; max-width: 640px; }
+  #breakdown { width: 100%; max-width: 760px; }
   #breakdown-list { list-style: none; margin: 0; padding: 0; }
   #breakdown-list li {
     display: flex; align-items: center; gap: 10px; padding: 8px 0;
@@ -100,7 +108,7 @@
   #breakdown-empty { color: #888; font-size: 14px; }
 
   /* --- Table-view fallback --- */
-  #table-view { width: 100%; max-width: 640px; }
+  #table-view { width: 100%; max-width: 760px; }
   #table-view summary { cursor: pointer; padding: 8px 0; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #222; }
@@ -136,7 +144,7 @@
     </div>
 
     <div id="chart-card">
-      <svg id="chart" viewBox="0 0 800 240" role="img" aria-label="Time by label"></svg>
+      <svg id="chart" viewBox="0 0 800 340" role="img" aria-label="Time by label"></svg>
       <div id="chart-empty" hidden>Nothing logged in this period.</div>
     </div>
 
@@ -406,7 +414,7 @@ function renderChart(starts, buckets, totals, grandTotal) {
   }), 0);
   const scaleMax = niceMax(chartMax);
 
-  const plotLeft = 48, plotRight = 792, plotTop = 12, baseline = 190, labelY = 212;
+  const plotLeft = 48, plotRight = 792, plotTop = 16, baseline = 280, labelY = 302;
   const plotWidth = plotRight - plotLeft, plotHeight = baseline - plotTop;
 
   // Gridlines at 0 / 50% / 100% of the nice scale max, with duration labels.
