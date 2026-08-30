@@ -241,11 +241,17 @@ relying on the debounced call having landed; Skip sends an empty label but keeps
 the description, since silently discarding text the user just typed would be worse
 than filing the session unlabeled.
 
-Label management lives in a collapsed `<details>` disclosure *below* the session
-list. Rendering every label inline above it pushed the session list off-screen once
-the label set grew, and the session list is the page's primary content. The native
+Label management lives in a collapsed `<details>` disclosure, placed directly under
+the controls and above the session list. Rendering every label inline was what
+pushed the session list off-screen once the label set grew - collapsing them fixed
+that, not moving them, since a collapsed disclosure is only ~32px tall wherever it
+sits. Below the session list it ended up ~1300px down the page once sessions
+carried descriptions, out of reach on a phone; above it, it costs one row and stays
+above the fold at any list length, adjacent to the picker it configures. Expanding
+it pushes the session list down, which is transient and user-initiated. The native
 element carries its own keyboard and screen-reader behavior, so no focus management
-is needed.
+is needed, and its summary wraps an `<h2>` so both sections appear in the heading
+outline.
 
 The page targets WCAG 2.2 AA: every control has an associated `<label>` (visually
 hidden where the layout has no room for visible text), delete buttons carry

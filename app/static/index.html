@@ -55,7 +55,10 @@
   #label-panel button { flex: 1; }
 
   section, #labels { width: 100%; max-width: 420px; }
-  h2, summary { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }
+  h2 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }
+  /* The summary's heading carries the styling; the h2's own block margins would
+     otherwise push the disclosure marker out of line with its text. */
+  summary h2 { display: inline; margin: 0; }
   ul { list-style: none; margin: 0; padding: 0; }
   li {
     display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
@@ -114,13 +117,10 @@
     </div>
   </div>
 
-  <section id="sessions" aria-labelledby="sessions-heading">
-    <h2 id="sessions-heading">Recent sessions</h2>
-    <ul id="sessions-list"></ul>
-  </section>
-
+  <!-- Collapsed this is 32px, so it sits next to the picker it configures rather
+       than below a session list that can run past 1200px. -->
   <details id="labels">
-    <summary id="labels-summary">Labels</summary>
+    <summary><h2 id="labels-summary">Labels</h2></summary>
     <ul id="labels-list"></ul>
     <div class="row" id="labels-add">
       <label class="visually-hidden" for="new-label-name">New label name</label>
@@ -130,6 +130,11 @@
       <button id="add-label" type="button">Add</button>
     </div>
   </details>
+
+  <section id="sessions" aria-labelledby="sessions-heading">
+    <h2 id="sessions-heading">Recent sessions</h2>
+    <ul id="sessions-list"></ul>
+  </section>
 </main>
 
 <script>
