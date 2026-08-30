@@ -2,9 +2,10 @@
 
 States: IDLE -> RUNNING <-> PAUSED -> PENDING_LABEL -> IDLE.
 
-Also owns `selected_label`, the label armed for the current session ("" = none).
-It can be set at any point - before starting, mid-session, or while a finished
-session waits to be filed - and resets to "" once a session is filed. The list of
+Also owns the metadata armed for the current session: `selected_label` (one of the
+configured labels, "" = none) and `selected_description` (free text, "" = blank).
+Both can be set at any point - before starting, mid-session, or while a finished
+session waits to be filed - and both reset once a session is filed. The list of
 available labels lives in labels_store and is passed into cycle_selected_label(),
 so this module stays free of I/O.
 """
@@ -14,6 +15,10 @@ from datetime import datetime, timezone
 from . import sessions_store
 
 IDLE, RUNNING, PAUSED, PENDING_LABEL = "IDLE", "RUNNING", "PAUSED", "PENDING_LABEL"
+
+# The description is persisted to state.json on every keystroke batch, so it needs
+# an upper bound; without one a paste could grow that file without limit.
+MAX_DESCRIPTION_CHARS = 500
 
 
 def now_iso(ts=None):
@@ -39,6 +44,7 @@ class Tracker:
         self.accumulated = 0.0
         self.pending = None  # finalized session data, set while PENDING_LABEL
         self.selected_label = ""  # armed label, "" = none; picked by wheel or web UI
+        self.selected_description = ""  # armed free-text note, "" = blank; web UI only
 
     def to_dict(self):
         return {
@@ -49,6 +55,7 @@ class Tracker:
             "accumulated": self.accumulated,
             "pending": self.pending,
             "selected_label": self.selected_label,
+            "selected_description": self.selected_description,
         }
 
     @classmethod
@@ -60,8 +67,9 @@ class Tracker:
         t.current_segment_start = data["current_segment_start"]
         t.accumulated = data["accumulated"]
         t.pending = data["pending"]
-        # .get: a state.json written before labels existed must still resume.
+        # .get: a state.json written before these fields existed must still resume.
         t.selected_label = data.get("selected_label", "")
+        t.selected_description = data.get("selected_description", "")
         return t
 
     def virtual_start_ts(self):
@@ -70,6 +78,9 @@ class Tracker:
 
     def set_selected_label(self, name):
         self.selected_label = name or ""
+
+    def set_selected_description(self, text):
+        self.selected_description = (text or "").strip()[:MAX_DESCRIPTION_CHARS]
 
     def cycle_selected_label(self, delta, names):
         """Move the selection `delta` steps through `names`, wrapping around.
@@ -86,18 +97,19 @@ class Tracker:
         self.selected_label = names[(index + delta) % len(names)]
 
     def ok_press(self):
-        """The bar's OK button: confirm the armed label when one is pending, else stop."""
+        """The bar's OK button: confirm the armed metadata when pending, else stop."""
         if self.app_state == PENDING_LABEL:
-            self.submit_label(self.selected_label)
+            self.submit_label(self.selected_label, self.selected_description)
         else:
             self.stop()
 
     def toggle_start(self):
         if self.app_state == PENDING_LABEL:
             # Force-skip: file this session under whatever is armed (nothing, unless
-            # the wheel was used), then start a fresh one immediately.
-            self._finalize_label(self.selected_label)
+            # the wheel or the web UI was used), then start a fresh one immediately.
+            self._finalize_label(self.selected_label, self.selected_description)
             self.selected_label = ""
+            self.selected_description = ""
             self._start_new_session()
             return
         if self.app_state == IDLE:
@@ -122,10 +134,10 @@ class Tracker:
         }
         self.app_state = PENDING_LABEL
 
-    def submit_label(self, label):
+    def submit_label(self, label, description=""):
         if self.app_state != PENDING_LABEL:
             return
-        self._finalize_label(label)
+        self._finalize_label(label, description)
         self._reset()
 
     def snapshot(self):
@@ -135,6 +147,7 @@ class Tracker:
             "current_segment_start": now_iso(self.current_segment_start) if self.current_segment_start else None,
             "accumulated_seconds": self.accumulated,
             "selected_label": self.selected_label,
+            "selected_description": self.selected_description,
         }
         if self.app_state == PENDING_LABEL and self.pending:
             data["pending"] = {
@@ -167,7 +180,7 @@ class Tracker:
         self.accumulated += now - self.current_segment_start
         self.current_segment_start = None
 
-    def _finalize_label(self, label):
+    def _finalize_label(self, label, description=""):
         p = self.pending
         record = {
             "session_id": now_iso(p["session_start"]),
@@ -175,6 +188,7 @@ class Tracker:
             "end": now_iso(p["end_ts"]),
             "total_active_seconds": round(p["total_active_seconds"]),
             "label": (label or "").strip(),
+            "description": (description or "").strip()[:MAX_DESCRIPTION_CHARS],
             "segments": [
                 {
                     "start": now_iso(seg["start_ts"]),
@@ -193,4 +207,6 @@ class Tracker:
         self.current_segment_start = None
         self.accumulated = 0.0
         self.pending = None
-        self.selected_label = ""  # a filed session always returns the wheel to (none)
+        # A filed session always returns the wheel to (none) and clears the note.
+        self.selected_label = ""
+        self.selected_description = ""

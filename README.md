@@ -62,6 +62,10 @@ Both the bar's physical buttons and the web UI control the same session:
   works in every state - spin it on the home screen to arm a label before you
   start, mid-session to change your mind, or on the end-of-session screen to
   choose before pressing OK
+- **Description** (web only): an optional free-text note about what you actually
+  did. Like the label it can be written at any point, and it's saved as you type,
+  so it survives a page refresh, a server restart, or a crash. The bar has no
+  keyboard and never displays it
 - Pressing **START** on the bar while a stopped session is awaiting a label files
   it under whatever label is selected (nothing, unless you used the wheel) and
   immediately starts a new session
@@ -112,14 +116,15 @@ under.
 Completed sessions are appended as JSON Lines to `sessions.jsonl`, and the web UI's
 "Recent sessions" list reads from the same file. This file is intentionally ignored
 by Git because it contains personal activity timestamps. Each record includes the
-session start and end, total active seconds, optional label, and active time
-segments.
+session start and end, total active seconds, optional label and description, and
+active time segments. Sessions logged before a field existed simply lack that key -
+there's no migration, so anything reading the file should default to `""`.
 
 ## Crash / restart resilience
 
 The current in-progress session (running, paused, or awaiting a label - including
-its active-time segments so far and the label currently selected) is persisted to
-`state.json` after every action
+its active-time segments so far and the label and description currently entered) is
+persisted to `state.json` after every action
 and automatically restored the next time you run `python -m app.server`, whether
 the previous run ended in a clean shutdown, a crash, or a power loss. Any downtime
 isn't specially accounted for - elapsed time just keeps counting from where it left

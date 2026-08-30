@@ -23,3 +23,21 @@ def test_append_session_writes_valid_jsonl_line(tmp_path, monkeypatch):
     sessions_store.append_session({"a": 1})
     line = path.read_text().strip()
     assert json.loads(line) == {"a": 1}
+
+
+def test_reads_records_written_before_descriptions_existed(tmp_path, monkeypatch):
+    """Sessions logged by an older build have no "description" key at all."""
+    monkeypatch.setattr(config, "LOG_PATH", tmp_path / "sessions.jsonl")
+    legacy = {
+        "session_id": "2026-08-24T06:17:43Z",
+        "start": "2026-08-24T06:17:43Z",
+        "end": "2026-08-24T06:17:50Z",
+        "total_active_seconds": 7,
+        "label": "Nothin",
+        "segments": [],
+    }
+    sessions_store.append_session(legacy)
+
+    record = sessions_store.read_recent_sessions()[0]
+    assert record["label"] == "Nothin"
+    assert record.get("description", "") == ""

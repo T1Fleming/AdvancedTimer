@@ -81,6 +81,7 @@ def test_index_serves_html(client):
 def test_snapshot_carries_labels_and_selection(client):
     snapshot = client.get("/api/state").json()
     assert snapshot["selected_label"] == ""
+    assert snapshot["selected_description"] == ""
     assert [label["name"] for label in snapshot["labels"]] == ["Cooking", "Coding", "Gaming"]
     assert all(label["color"].startswith("#") for label in snapshot["labels"])
 
@@ -103,6 +104,45 @@ def test_deleting_the_selected_label_clears_the_selection(client):
     client.post("/api/actions/select-label", json={"label": "Gaming"})
     client.request("DELETE", "/api/labels", params={"name": "Gaming"})
     assert client.get("/api/state").json()["selected_label"] == ""
+
+
+def test_select_description_round_trips_without_touching_the_bar(client):
+    """The bar never renders the description, so arming one must not redraw it."""
+    r = client.post("/api/actions/select-description", json={"description": "wrote tests"})
+    assert r.json()["selected_description"] == "wrote tests"
+
+    for method in DRAW_METHODS:
+        assert not getattr(busybar, method).called, f"{method} should not run for a description"
+
+
+def test_label_and_description_both_land_in_the_session(client):
+    client.post("/api/actions/start-toggle")
+    client.post("/api/actions/stop")
+    client.post("/api/actions/label", json={"label": "Coding", "description": "shipped it"})
+
+    session = client.get("/api/sessions").json()[0]
+    assert (session["label"], session["description"]) == ("Coding", "shipped it")
+
+
+def test_skip_drops_the_label_but_keeps_the_description(client):
+    client.post("/api/actions/start-toggle")
+    client.post("/api/actions/select-description", json={"description": "worth remembering"})
+    client.post("/api/actions/stop")
+    # What the Skip button sends: no label, description preserved.
+    client.post("/api/actions/label", json={"label": "", "description": "worth remembering"})
+
+    session = client.get("/api/sessions").json()[0]
+    assert session["label"] == ""
+    assert session["description"] == "worth remembering"
+
+
+def test_description_is_cleared_after_filing(client):
+    client.post("/api/actions/start-toggle")
+    client.post("/api/actions/select-description", json={"description": "temporary"})
+    client.post("/api/actions/stop")
+    client.post("/api/actions/label", json={"label": "", "description": "temporary"})
+
+    assert client.get("/api/state").json()["selected_description"] == ""
 
 
 def test_start_toggle_from_pending_files_the_selected_label(client):

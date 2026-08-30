@@ -1,7 +1,9 @@
 import pytest
 
 from app import config, sessions_store
-from app.tracker_core import IDLE, PAUSED, PENDING_LABEL, RUNNING, Tracker
+from app.tracker_core import (
+    IDLE, MAX_DESCRIPTION_CHARS, PAUSED, PENDING_LABEL, RUNNING, Tracker,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -242,3 +244,92 @@ def test_start_toggle_from_pending_files_selection_then_clears_it():
     assert t.app_state == RUNNING
     assert sessions_store.read_recent_sessions()[0]["label"] == "Coding"
     assert t.selected_label == ""
+
+
+# --- Session description -------------------------------------------------------
+
+def test_description_starts_blank():
+    assert Tracker().selected_description == ""
+
+
+def test_description_is_stripped_and_capped():
+    t = Tracker()
+    t.set_selected_description("  spaced out  ")
+    assert t.selected_description == "spaced out"
+
+    t.set_selected_description("x" * 900)
+    assert len(t.selected_description) == MAX_DESCRIPTION_CHARS
+
+    t.set_selected_description(None)
+    assert t.selected_description == ""
+
+
+def test_description_survives_a_state_round_trip():
+    t = Tracker()
+    t.set_selected_description("refactored the label store")
+    t.toggle_start()
+
+    restored = Tracker.from_dict(t.to_dict())
+
+    assert restored.selected_description == "refactored the label store"
+    assert restored.snapshot() == t.snapshot()
+
+
+def test_from_dict_defaults_description_for_pre_description_state_files():
+    """A state.json written before descriptions existed must still resume."""
+    legacy = Tracker().to_dict()
+    del legacy["selected_description"]
+    assert Tracker.from_dict(legacy).selected_description == ""
+
+
+def test_description_reaches_the_session_record():
+    t = Tracker()
+    t.toggle_start()
+    t.stop()
+    t.submit_label("Coding", "wired up the description field")
+
+    record = sessions_store.read_recent_sessions()[0]
+    assert record["label"] == "Coding"
+    assert record["description"] == "wired up the description field"
+
+
+def test_description_defaults_to_blank_in_the_record():
+    t = Tracker()
+    t.toggle_start()
+    t.stop()
+    t.submit_label("Coding")
+
+    assert sessions_store.read_recent_sessions()[0]["description"] == ""
+
+
+def test_ok_press_files_the_armed_description():
+    t = Tracker()
+    t.set_selected_label("Gaming")
+    t.set_selected_description("ranked matches")
+    t.toggle_start()
+    t.ok_press()  # stop
+    t.ok_press()  # file it
+
+    record = sessions_store.read_recent_sessions()[0]
+    assert (record["label"], record["description"]) == ("Gaming", "ranked matches")
+
+
+def test_filing_a_session_clears_the_description():
+    t = Tracker()
+    t.set_selected_description("done for now")
+    t.toggle_start()
+    t.stop()
+    t.submit_label("", "done for now")
+    assert t.selected_description == ""
+
+
+def test_start_toggle_from_pending_files_description_then_clears_it():
+    t = Tracker()
+    t.set_selected_description("bar force-skip")
+    t.toggle_start()
+    t.stop()
+    t.toggle_start()
+
+    assert t.app_state == RUNNING
+    assert sessions_store.read_recent_sessions()[0]["description"] == "bar force-skip"
+    assert t.selected_description == ""

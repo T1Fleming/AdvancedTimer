@@ -40,6 +40,11 @@ _redraw_task = None  # in-flight debounced redraw, see schedule_redraw()
 
 class LabelBody(BaseModel):
     label: str = ""
+    description: str = ""
+
+
+class DescriptionBody(BaseModel):
+    description: str = ""
 
 
 class NewLabelBody(BaseModel):
@@ -91,6 +96,18 @@ async def apply_and_broadcast(mutation):
     mutation(tracker)
     state_store.save_state(tracker)
     await redraw_and_broadcast()
+
+
+def apply_and_publish(mutation):
+    """Mutate, persist, and notify browsers - without redrawing the bar.
+
+    For state the bar doesn't render. The description is typed, so this fires
+    repeatedly; routing it through apply_and_broadcast() would put an HTTP draw on
+    the device behind every keystroke batch for something it never shows.
+    """
+    mutation(tracker)
+    state_store.save_state(tracker)
+    broadcaster.publish(full_snapshot())
 
 
 async def _delayed_redraw(delay):
@@ -194,7 +211,7 @@ async def stop():
 
 @app.post("/api/actions/label")
 async def submit_label(body: LabelBody):
-    await apply_and_broadcast(lambda t: t.submit_label(body.label))
+    await apply_and_broadcast(lambda t: t.submit_label(body.label, body.description))
     return full_snapshot()
 
 
@@ -202,6 +219,13 @@ async def submit_label(body: LabelBody):
 async def select_label(body: LabelBody):
     """Arm a label from the web UI - the mirror of turning the bar's scroll wheel."""
     await apply_and_broadcast(lambda t: t.set_selected_label(body.label))
+    return full_snapshot()
+
+
+@app.post("/api/actions/select-description")
+async def select_description(body: DescriptionBody):
+    """Arm the session's free-text note. Web-only: the bar has no way to type."""
+    apply_and_publish(lambda t: t.set_selected_description(body.description))
     return full_snapshot()
 
 
