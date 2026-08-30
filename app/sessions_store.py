@@ -18,6 +18,15 @@ def read_recent_sessions(limit=20):
     return list(reversed(records[-limit:]))
 
 
+def read_all_sessions():
+    """Every completed session, oldest first, uncapped and unreversed - the stats
+    page buckets everything itself, so there's no reason to pay for a reverse here."""
+    if not config.LOG_PATH.exists():
+        return []
+    lines = config.LOG_PATH.read_text().splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
+
+
 def total_seconds_today():
     """Active seconds logged so far today, for the bar's home screen. Never raises.
 

@@ -50,6 +50,12 @@ Open `http://<this computer's LAN IP>:8765/` from any browser on the same Wi-Fi
 network, including your phone. There's no login - anyone on your network can open
 the page, the same trust level as the bar's own LAN API.
 
+A "Stats" link in the corner opens `/stats`, a history view: a stacked bar chart
+of time spent per label, switchable between day/week/month and paged with
+prev/next controls, plus a ranked breakdown and a table view of everything
+logged. It's read-only and computed entirely in the browser from your existing
+session history - nothing new is tracked to produce it.
+
 ## Controls
 
 Both the bar's physical buttons and the web UI control the same session:
@@ -178,6 +184,7 @@ are stubbed out, so no physical device is needed to run them.
 - `app/broadcaster.py` - fans timer-state updates out to connected browsers
 - `app/config.py` - environment/config loading
 - `app/static/index.html` - the web UI (single page, no build step)
+- `app/static/stats.html` - the stats page: history by label, no build step
 - `app/pb/proto/` - protobuf definitions used by the device protocol
 - `app/pb/*_pb2.py` - generated Python protobuf modules
 - `tests/` - unit and API tests (see Testing above)

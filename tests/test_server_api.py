@@ -154,3 +154,37 @@ def test_start_toggle_from_pending_files_the_selected_label(client):
     assert client.post("/api/actions/start-toggle").json()["state"] == "RUNNING"
     assert client.get("/api/sessions").json()[0]["label"] == "Cooking"
     assert client.get("/api/state").json()["selected_label"] == ""
+
+
+def test_stats_page_serves_html(client):
+    r = client.get("/stats")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+
+
+def test_get_all_sessions_empty_store(client):
+    assert client.get("/api/sessions/all").json() == []
+
+
+def test_get_all_sessions_returns_everything_logged(client):
+    for i in range(3):
+        client.post("/api/actions/start-toggle")
+        client.post("/api/actions/stop")
+        client.post("/api/actions/label", json={"label": f"session {i}"})
+
+    all_sessions = client.get("/api/sessions/all").json()
+    assert [s["label"] for s in all_sessions] == ["session 0", "session 1", "session 2"]
+
+
+def test_all_sessions_route_does_not_affect_the_capped_endpoint(client):
+    """Adding /api/sessions/all must not change /api/sessions?limit's own behavior."""
+    for i in range(5):
+        client.post("/api/actions/start-toggle")
+        client.post("/api/actions/stop")
+        client.post("/api/actions/label", json={"label": f"session {i}"})
+
+    capped = client.get("/api/sessions?limit=2").json()
+    assert len(capped) == 2
+    assert [s["label"] for s in capped] == ["session 4", "session 3"]  # unchanged: newest first
+
+    assert len(client.get("/api/sessions/all").json()) == 5

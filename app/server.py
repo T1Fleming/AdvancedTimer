@@ -192,6 +192,11 @@ async def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/stats")
+async def stats_page():
+    return FileResponse(STATIC_DIR / "stats.html")
+
+
 @app.get("/api/state")
 async def get_state():
     return full_snapshot()
@@ -255,6 +260,13 @@ async def delete_label(name: str):
 @app.get("/api/sessions")
 async def get_sessions(limit: int = 20):
     return sessions_store.read_recent_sessions(limit)
+
+
+@app.get("/api/sessions/all")
+async def get_all_sessions():
+    """Full history, uncapped - the stats page fetches this once and buckets it
+    entirely client-side. Additive: does not change /api/sessions's contract."""
+    return sessions_store.read_all_sessions()
 
 
 @app.get("/api/events")

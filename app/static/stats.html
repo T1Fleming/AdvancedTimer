@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BUSY Bar Time Tracker - Stats</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #111; color: #eee;
+    margin: 0; padding: 24px 16px;
+  }
+  main {
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+
+  /* Available to screen readers, removed from the visual layout. */
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  /* Buttons are border-less on a dark background - don't rely on the UA ring. */
+  :focus-visible { outline: 2px solid #7cc4ff; outline-offset: 2px; }
+
+  .top-nav { align-self: flex-start; }
+  .top-nav a {
+    color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;
+    text-decoration: none;
+  }
+  .top-nav a:hover { color: #eee; }
+
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 8px; }
+  summary h2 { display: inline; margin: 0; }
+
+  button {
+    font-size: 14px; padding: 8px 16px; border-radius: 8px; border: none;
+    background: #2a2a2a; color: #eee; cursor: pointer;
+  }
+  button:active { background: #3a3a3a; }
+  button:disabled { opacity: 0.35; cursor: default; }
+
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex: none;
+    background: #777; display: inline-block;
+  }
+
+  /* --- Headline stat tile --- */
+  #headline { text-align: center; }
+  #headline-value {
+    font-size: 56px; font-weight: 600; line-height: 1;
+    /* Proportional figures at display size - tabular-nums is reserved for columns
+       of numbers that must align (table rows, axis ticks), not a standalone value. */
+  }
+  #headline-period { color: #888; font-size: 13px; margin-top: 6px; }
+
+  /* --- Controls row: one row, above everything it scopes --- */
+  #controls-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    width: 100%; max-width: 640px; flex-wrap: wrap;
+  }
+  #granularity { display: flex; gap: 4px; }
+  #granularity button.active { background: #3a3a3a; }
+  #period-nav { display: flex; align-items: center; gap: 10px; }
+  .icon-btn { width: 32px; height: 32px; padding: 0; font-size: 16px; flex: none; }
+  #period-label { color: #888; font-size: 13px; min-width: 180px; text-align: center; }
+
+  /* --- Chart --- */
+  #chart-card { width: 100%; max-width: 640px; }
+  #chart-empty { color: #888; font-size: 14px; text-align: center; padding: 40px 0; }
+  #chart { width: 100%; height: auto; display: block; }
+  .gridline { stroke: #222; stroke-width: 1; }
+  .axis-label { fill: #888; font-size: 11px; }
+  .grid-label { fill: #888; font-size: 10px; }
+  .seg { cursor: pointer; }
+  .seg:hover, .seg:focus-visible { opacity: 0.85; }
+
+  #chart-tooltip {
+    position: absolute; pointer-events: none; z-index: 10;
+    background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
+    padding: 8px 10px; font-size: 13px; white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    display: none;
+  }
+  #chart-tooltip .value { font-weight: 600; color: #eee; }
+  #chart-tooltip .name { color: #888; margin-left: 6px; }
+
+  /* --- Breakdown list (also serves as the chart's legend) --- */
+  #breakdown { width: 100%; max-width: 640px; }
+  #breakdown-list { list-style: none; margin: 0; padding: 0; }
+  #breakdown-list li {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid #222; font-size: 14px;
+  }
+  #breakdown-list .name { flex: none; width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #breakdown-list .value { flex: none; width: 60px; color: #888; font-variant-numeric: tabular-nums; }
+  #breakdown-list .bar-track { flex: 1; height: 8px; background: #1a1a1a; border-radius: 4px; overflow: hidden; }
+  #breakdown-list .bar-fill { height: 100%; border-radius: 4px; }
+  #breakdown-empty { color: #888; font-size: 14px; }
+
+  /* --- Table-view fallback --- */
+  #table-view { width: 100%; max-width: 640px; }
+  #table-view summary { cursor: pointer; padding: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #222; }
+  th { color: #888; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+  #empty-state { color: #888; font-size: 14px; text-align: center; padding: 60px 0; }
+</style>
+</head>
+<body>
+<main>
+  <nav class="top-nav"><a href="/">&#8592; Timer</a></nav>
+
+  <h1>Stats</h1>
+
+  <div id="content" hidden>
+    <div id="headline">
+      <div id="headline-value">0m</div>
+      <div id="headline-period"></div>
+    </div>
+
+    <div id="controls-row">
+      <div id="granularity" role="group" aria-label="Chart granularity">
+        <button type="button" data-granularity="day" aria-pressed="true" class="active">Day</button>
+        <button type="button" data-granularity="week" aria-pressed="false">Week</button>
+        <button type="button" data-granularity="month" aria-pressed="false">Month</button>
+      </div>
+      <div id="period-nav">
+        <button type="button" id="prev-period" class="icon-btn" aria-label="Previous period">&#8592;</button>
+        <span id="period-label" role="status"></span>
+        <button type="button" id="next-period" class="icon-btn" aria-label="Next period" disabled>&#8594;</button>
+      </div>
+    </div>
+
+    <div id="chart-card">
+      <svg id="chart" viewBox="0 0 800 240" role="img" aria-label="Time by label"></svg>
+      <div id="chart-empty" hidden>Nothing logged in this period.</div>
+    </div>
+
+    <section id="breakdown" aria-labelledby="breakdown-heading">
+      <h2 id="breakdown-heading">Breakdown</h2>
+      <ul id="breakdown-list"></ul>
+      <div id="breakdown-empty" hidden>Nothing logged in this period.</div>
+    </section>
+
+    <details id="table-view">
+      <summary><h2>View as table</h2></summary>
+      <table>
+        <thead>
+          <tr><th scope="col">Period</th><th scope="col">Label</th><th scope="col" class="num">Duration</th></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </details>
+  </div>
+
+  <div id="empty-state" hidden>No sessions logged yet - start a session on the bar or the tracker page to see stats here.</div>
+</main>
+
+<div id="chart-tooltip" role="presentation"></div>
+
+<script>
+const NONE_COLOR = '#777777';
+const OTHER_COLOR = '#4b5a70';
+const CHART_LABEL_CAP = 6;
+const GAP = 2; // px surface gap between stacked segments
+
+const contentEl = document.getElementById('content');
+const emptyStateEl = document.getElementById('empty-state');
+const headlineValueEl = document.getElementById('headline-value');
+const headlinePeriodEl = document.getElementById('headline-period');
+const granularityGroup = document.getElementById('granularity');
+const prevBtn = document.getElementById('prev-period');
+const nextBtn = document.getElementById('next-period');
+const periodLabelEl = document.getElementById('period-label');
+const chartSvg = document.getElementById('chart');
+const chartEmptyEl = document.getElementById('chart-empty');
+const tooltipEl = document.getElementById('chart-tooltip');
+const breakdownList = document.getElementById('breakdown-list');
+const breakdownEmptyEl = document.getElementById('breakdown-empty');
+const tableBody = document.getElementById('table-body');
+
+let labels = [];       // [{name, color}], from /api/labels
+let rows = [];         // flattened per-segment rows, from /api/sessions/all
+let granularity = 'day';   // 'day' | 'week' | 'month'
+let periodOffset = 0;      // 0 = the window containing today; 1 = one window back; ...
+
+const WINDOW_BUCKETS = { day: 7, week: 6, month: 6 };
+
+// ---------- date helpers ----------
+
+function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
+function addMonths(date, n) { return new Date(date.getFullYear(), date.getMonth() + n, 1); }
+
+function mondayOf(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dow = (d.getDay() + 6) % 7; // Mon=0..Sun=6
+  return addDays(d, -dow);
+}
+
+function dayKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function weekKey(d) { return dayKey(mondayOf(d)); }
+function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+const BUCKET_KEY_FNS = { day: dayKey, week: weekKey, month: monthKey };
+
+// Exclusive end of the "offset 0" window (the one containing today).
+function currentWindowEnd(g) {
+  const now = new Date();
+  if (g === 'month') return addMonths(new Date(now.getFullYear(), now.getMonth(), 1), 1);
+  return addDays(mondayOf(now), 7); // day & week granularities both align to week boundaries
+}
+
+function windowRange(g, offset) {
+  const bucketCount = WINDOW_BUCKETS[g];
+  const currentEnd = currentWindowEnd(g);
+  if (g === 'month') {
+    const end = addMonths(currentEnd, -bucketCount * offset);
+    return { start: addMonths(end, -bucketCount), end, bucketCount };
+  }
+  const stepDays = g === 'day' ? 7 : 42;
+  const end = addDays(currentEnd, -stepDays * offset);
+  const start = addDays(end, g === 'day' ? -7 : -42);
+  return { start, end, bucketCount };
+}
+
+// Every bucket start-date within [start, end), in order - including ones with no data.
+function bucketStarts(g, start, end) {
+  const starts = [];
+  let cur = new Date(start);
+  while (cur < end) {
+    starts.push(new Date(cur));
+    cur = g === 'day' ? addDays(cur, 1) : g === 'week' ? addDays(cur, 7) : addMonths(cur, 1);
+  }
+  return starts;
+}
+
+function fmtDay(d) { return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+function fmtMonth(d) { return d.toLocaleDateString(undefined, { month: 'short' }); }
+function fmtMonthYear(d) { return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }); }
+function fmtWeekday(d) { return d.toLocaleDateString(undefined, { weekday: 'short' }); }
+
+// The week/month windows can cross a year boundary (a 6-week or 6-month span
+// starting in December, say) - a single trailing year is only correct for one
+// end of the range then, so the start gets its own year whenever it differs.
+function periodLabel(g, start, end) {
+  const lastDay = addDays(end, -1);
+  const year = lastDay.getFullYear();
+  if (g === 'day') return `Week of ${fmtDay(start)}–${lastDay.getDate()}, ${year}`;
+  if (g === 'week') {
+    const startLabel = start.getFullYear() === year ? fmtDay(start) : `${fmtDay(start)}, ${start.getFullYear()}`;
+    return `${startLabel} – ${fmtDay(lastDay)}, ${year}`;
+  }
+  const lastMonthStart = addMonths(end, -1);
+  const startLabel = start.getFullYear() === year ? fmtMonth(start) : fmtMonthYear(start);
+  return `${startLabel} – ${fmtMonth(lastMonthStart)} ${year}`;
+}
+
+function axisLabel(g, bucketStart) {
+  if (g === 'day') return fmtWeekday(bucketStart);
+  if (g === 'week') return fmtDay(bucketStart);
+  return fmtMonth(bucketStart);
+}
+
+function tableBucketLabel(g, bucketStart) {
+  if (g === 'day') return bucketStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  if (g === 'week') return `Week of ${bucketStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  return bucketStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+// ---------- duration formatting ----------
+
+function formatHoursMinutes(totalSeconds) {
+  totalSeconds = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  if (m) return `${m}m`;
+  return `${totalSeconds}s`;
+}
+
+// "Nice" round duration (in seconds) at or above `value`, for the y-axis scale.
+function niceMax(value) {
+  if (value <= 0) return 900; // 15 min floor, so a near-empty period doesn't divide by zero
+  const steps = [900, 1800, 3600, 7200, 14400, 21600, 43200, 86400, 172800, 259200, 604800];
+  for (const step of steps) {
+    if (value <= step) return step;
+  }
+  const day = 86400;
+  return Math.ceil(value / day) * day;
+}
+
+// ---------- color ----------
+
+function cssColor(color) { return color ? color.slice(0, 7) : NONE_COLOR; }
+function colorForLabel(name) {
+  const match = labels.find((l) => l.name === name);
+  return match ? cssColor(match.color) : NONE_COLOR;
+}
+function displayName(name) { return name || '(no label)'; }
+
+// ---------- data ----------
+
+function segmentRows(sessions) {
+  const out = [];
+  for (const s of sessions) {
+    const label = s.label || '';
+    for (const seg of s.segments || []) {
+      if (!seg.start) continue;
+      out.push({ date: new Date(seg.start), label, seconds: seg.duration_seconds || 0 });
+    }
+  }
+  return out;
+}
+
+// Map<bucketKey, Map<label, seconds>>, filtered to [rangeStart, rangeEnd).
+function bucketByLabel(g, rangeStart, rangeEnd) {
+  const keyFn = BUCKET_KEY_FNS[g];
+  const buckets = new Map();
+  for (const row of rows) {
+    if (row.date < rangeStart || row.date >= rangeEnd) continue;
+    const bKey = keyFn(row.date);
+    if (!buckets.has(bKey)) buckets.set(bKey, new Map());
+    const perLabel = buckets.get(bKey);
+    perLabel.set(row.label, (perLabel.get(row.label) || 0) + row.seconds);
+  }
+  return buckets;
+}
+
+// Map<label, seconds>, summed across the same range - feeds the breakdown list,
+// the headline total, and the top-N-for-the-chart selection.
+function totalsByLabel(rangeStart, rangeEnd) {
+  const totals = new Map();
+  for (const row of rows) {
+    if (row.date < rangeStart || row.date >= rangeEnd) continue;
+    totals.set(row.label, (totals.get(row.label) || 0) + row.seconds);
+  }
+  return totals;
+}
+
+// ---------- rendering ----------
+
+function render() {
+  // Rebuilding the chart replaces the hovered segment's DOM node outright, so it
+  // never fires its own pointerleave - without this the tooltip can survive
+  // pointing at data that no longer exists.
+  hideTooltip();
+
+  const { start, end, bucketCount } = windowRange(granularity, periodOffset);
+  const buckets = bucketByLabel(granularity, start, end);
+  const totals = totalsByLabel(start, end);
+  const starts = bucketStarts(granularity, start, end);
+
+  const grandTotal = [...totals.values()].reduce((a, b) => a + b, 0);
+
+  headlineValueEl.textContent = formatHoursMinutes(grandTotal);
+  headlinePeriodEl.textContent = periodLabel(granularity, start, end);
+  periodLabelEl.textContent = periodLabel(granularity, start, end);
+  nextBtn.disabled = periodOffset === 0;
+
+  renderChart(starts, buckets, totals, grandTotal);
+  renderBreakdown(totals, grandTotal);
+  renderTable(granularity, starts, buckets);
+}
+
+function topLabelsFor(totals) {
+  return [...totals.entries()]
+    .filter(([name]) => name !== '')
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, CHART_LABEL_CAP)
+    .map(([name]) => name);
+}
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function topRoundedPath(x, yTop, w, yBottom, r) {
+  const h = yBottom - yTop;
+  if (h <= r) r = Math.max(0, h); // guard: a very thin segment can't fit the radius
+  return `M${x},${yTop + r} Q${x},${yTop} ${x + r},${yTop} L${x + w - r},${yTop} ` +
+         `Q${x + w},${yTop} ${x + w},${yTop + r} L${x + w},${yBottom} L${x},${yBottom} Z`;
+}
+
+function renderChart(starts, buckets, totals, grandTotal) {
+  chartSvg.innerHTML = '';
+  chartSvg.setAttribute('aria-label', `Time by label, ${periodLabel(granularity, starts[0], addDays(starts[starts.length - 1], 1))}`);
+
+  if (grandTotal === 0) {
+    chartEmptyEl.hidden = false;
+    chartSvg.hidden = true;
+    return;
+  }
+  chartEmptyEl.hidden = true;
+  chartSvg.hidden = false;
+
+  const topLabels = topLabelsFor(totals);
+  const chartMax = Math.max(...starts.map((s) => {
+    const perLabel = buckets.get(BUCKET_KEY_FNS[granularity](s)) || new Map();
+    return [...perLabel.values()].reduce((a, b) => a + b, 0);
+  }), 0);
+  const scaleMax = niceMax(chartMax);
+
+  const plotLeft = 48, plotRight = 792, plotTop = 12, baseline = 190, labelY = 212;
+  const plotWidth = plotRight - plotLeft, plotHeight = baseline - plotTop;
+
+  // Gridlines at 0 / 50% / 100% of the nice scale max, with duration labels.
+  const gridGroup = svgEl('g', {});
+  [0, 0.5, 1].forEach((frac) => {
+    const y = baseline - frac * plotHeight;
+    gridGroup.appendChild(svgEl('line', { x1: plotLeft, x2: plotRight, y1: y, y2: y, class: 'gridline' }));
+    const text = svgEl('text', { x: plotLeft - 8, y: y + 4, 'text-anchor': 'end', class: 'grid-label' });
+    text.textContent = frac === 0 ? '0' : formatHoursMinutes(scaleMax * frac);
+    gridGroup.appendChild(text);
+  });
+  chartSvg.appendChild(gridGroup);
+
+  const barGroup = svgEl('g', {});
+  const slot = plotWidth / starts.length;
+  const barWidth = Math.min(24, slot * 0.6);
+
+  starts.forEach((bucketStart, i) => {
+    const bKey = BUCKET_KEY_FNS[granularity](bucketStart);
+    const perLabel = buckets.get(bKey) || new Map();
+    const x = plotLeft + i * slot + (slot - barWidth) / 2;
+
+    // Fold into the fixed chart legend: top-N labels individually, everything
+    // else (beyond the cap) into "(Other)", "(no label)" always kept separate.
+    const segMap = new Map();
+    for (const [name, secs] of perLabel.entries()) {
+      if (secs <= 0) continue;
+      if (name === '') segMap.set('', (segMap.get('') || 0) + secs);
+      else if (topLabels.includes(name)) segMap.set(name, (segMap.get(name) || 0) + secs);
+      else segMap.set('__other__', (segMap.get('__other__') || 0) + secs);
+    }
+
+    // Fixed stack order: top labels alphabetically, then Other, then no-label -
+    // so a given label sits in the same visual position bucket to bucket.
+    const order = [...topLabels].sort().filter((n) => segMap.has(n));
+    if (segMap.has('__other__')) order.push('__other__');
+    if (segMap.has('')) order.push('');
+
+    let yCursor = baseline;
+    order.forEach((key, idx) => {
+      const secs = segMap.get(key);
+      const h = (secs / scaleMax) * plotHeight;
+      if (h <= 0) return;
+      const yTop = yCursor - h;
+      const yBottom = yCursor - (idx === 0 ? 0 : GAP); // gap below every segment but the bottom one
+      const isTopmost = idx === order.length - 1;
+      const color = key === '__other__' ? OTHER_COLOR : key === '' ? NONE_COLOR : colorForLabel(key);
+      const name = key === '__other__' ? '(Other)' : displayName(key);
+
+      let el;
+      if (isTopmost) {
+        el = svgEl('path', { d: topRoundedPath(x, yTop, barWidth, yBottom, 4), fill: color, class: 'seg' });
+      } else {
+        el = svgEl('rect', { x, y: yTop, width: barWidth, height: Math.max(0, yBottom - yTop), fill: color, class: 'seg' });
+      }
+      el.dataset.name = name;
+      el.dataset.duration = formatHoursMinutes(secs);
+      el.addEventListener('pointerenter', showTooltip);
+      el.addEventListener('pointermove', moveTooltip);
+      el.addEventListener('pointerleave', hideTooltip);
+      barGroup.appendChild(el);
+
+      yCursor -= h;
+    });
+
+    const label = svgEl('text', { x: x + barWidth / 2, y: labelY, 'text-anchor': 'middle', class: 'axis-label' });
+    label.textContent = axisLabel(granularity, bucketStart);
+    barGroup.appendChild(label);
+  });
+
+  chartSvg.appendChild(barGroup);
+}
+
+function showTooltip(e) {
+  const t = e.currentTarget;
+  tooltipEl.innerHTML = '';
+  const value = document.createElement('span');
+  value.className = 'value';
+  value.textContent = t.dataset.duration;
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = t.dataset.name;
+  tooltipEl.append(value, name);
+  tooltipEl.style.display = 'block';
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  tooltipEl.style.left = `${e.clientX + window.scrollX + 14}px`;
+  tooltipEl.style.top = `${e.clientY + window.scrollY - 12}px`;
+}
+function hideTooltip() { tooltipEl.style.display = 'none'; }
+
+function renderBreakdown(totals, grandTotal) {
+  breakdownList.innerHTML = '';
+  const entries = [...totals.entries()].filter(([, secs]) => secs > 0).sort((a, b) => b[1] - a[1]);
+
+  if (entries.length === 0) {
+    breakdownEmptyEl.hidden = false;
+    breakdownList.hidden = true;
+    return;
+  }
+  breakdownEmptyEl.hidden = true;
+  breakdownList.hidden = false;
+
+  const maxSecs = entries[0][1];
+  for (const [name, secs] of entries) {
+    const li = document.createElement('li');
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = colorForLabel(name);
+    dot.setAttribute('aria-hidden', 'true');
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'name';
+    nameEl.textContent = displayName(name);
+
+    const track = document.createElement('span');
+    track.className = 'bar-track';
+    const fill = document.createElement('span');
+    fill.className = 'bar-fill';
+    fill.style.width = `${(secs / maxSecs) * 100}%`;
+    fill.style.background = colorForLabel(name);
+    track.appendChild(fill);
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'value';
+    valueEl.textContent = formatHoursMinutes(secs);
+
+    li.append(dot, nameEl, track, valueEl);
+    breakdownList.appendChild(li);
+  }
+}
+
+function renderTable(g, starts, buckets) {
+  tableBody.innerHTML = '';
+  for (const bucketStart of starts) {
+    const bKey = BUCKET_KEY_FNS[g](bucketStart);
+    const perLabel = buckets.get(bKey) || new Map();
+    const entries = [...perLabel.entries()].filter(([, secs]) => secs > 0).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) continue;
+    for (const [name, secs] of entries) {
+      const tr = document.createElement('tr');
+      const bucketCell = document.createElement('td');
+      bucketCell.textContent = tableBucketLabel(g, bucketStart);
+      const nameCell = document.createElement('td');
+      nameCell.textContent = displayName(name);
+      const valueCell = document.createElement('td');
+      valueCell.className = 'num';
+      valueCell.textContent = formatHoursMinutes(secs);
+      tr.append(bucketCell, nameCell, valueCell);
+      tableBody.appendChild(tr);
+    }
+  }
+}
+
+// ---------- controls ----------
+
+granularityGroup.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-granularity]');
+  if (!btn) return;
+  granularity = btn.dataset.granularity;
+  periodOffset = 0; // changing granularity resets to the period containing today
+  for (const b of granularityGroup.querySelectorAll('button')) {
+    const active = b === btn;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  }
+  render();
+});
+
+prevBtn.addEventListener('click', () => { periodOffset += 1; render(); });
+nextBtn.addEventListener('click', () => { if (periodOffset > 0) { periodOffset -= 1; render(); } });
+
+// ---------- init ----------
+
+async function init() {
+  const [sessions, labelData] = await Promise.all([
+    fetch('/api/sessions/all').then((r) => r.json()),
+    fetch('/api/labels').then((r) => r.json()),
+  ]);
+  labels = labelData;
+  rows = segmentRows(sessions);
+
+  if (sessions.length === 0) {
+    emptyStateEl.hidden = false;
+    contentEl.hidden = true;
+    return;
+  }
+  contentEl.hidden = false;
+  render();
+}
+
+init();
+</script>
+</body>
+</html>

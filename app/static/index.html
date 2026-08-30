@@ -23,6 +23,13 @@
   /* Buttons are border-less on a dark background - don't rely on the UA ring. */
   :focus-visible { outline: 2px solid #7cc4ff; outline-offset: 2px; }
 
+  .top-nav { align-self: flex-end; }
+  .top-nav a {
+    color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;
+    text-decoration: none;
+  }
+  .top-nav a:hover { color: #eee; }
+
   #state { font-size: 14px; letter-spacing: 0.1em; color: #888; text-transform: uppercase; }
   #elapsed { font-size: 56px; font-variant-numeric: tabular-nums; font-weight: 600; }
   .controls { display: flex; gap: 12px; }
@@ -85,6 +92,8 @@
 </head>
 <body>
 <main>
+  <nav class="top-nav"><a href="/stats">Stats &#8594;</a></nav>
+
   <h1 class="visually-hidden">BUSY Bar time tracker</h1>
 
   <div id="state" role="status">idle</div>

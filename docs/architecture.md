@@ -35,11 +35,12 @@ wheel and never displays the description.
 | Tracker | `app/tracker_core.py` | Pure timer state machine; owns transitions, active segments, snapshots, and session records. |
 | BUSY Bar client | `app/busybar_client.py` | Async HTTP display client and reconnecting WebSocket button-event stream. |
 | State store | `app/state_store.py` | Best-effort atomic persistence and recovery of the current tracker. |
-| Sessions store | `app/sessions_store.py` | Append-only JSON Lines storage and newest-first reads of completed sessions. |
+| Sessions store | `app/sessions_store.py` | Append-only JSON Lines storage; newest-first capped reads, and an uncapped oldest-first read for the stats page. |
 | Labels store | `app/labels_store.py` | The label set in `labels.json`: forgiving parse, mtime-cached reads, add/delete. |
 | Atomic IO | `app/atomic_io.py` | Shared tmp-file/fsync/rename JSON write used by the state and label stores. |
 | State broadcaster | `app/broadcaster.py` | In-process fan-out of state snapshots to Server-Sent Event subscribers. |
 | Browser UI | `app/static/index.html` | Static single-page UI with controls, live elapsed-time rendering, and history. |
+| Stats page | `app/static/stats.html` | Static page reviewing history: a day/week/month stacked bar chart of time by label, client-side aggregated. |
 | Configuration | `app/config.py` | Loads `.env` and environment variables; provides device, web, and storage settings. |
 
 `server.py` creates one `Tracker`, `BusyBarClient`, and `StateBroadcaster` at
@@ -195,6 +196,7 @@ actions. No build system or client-side framework is used.
 | Endpoint | Method | Request | Response and behavior |
 | --- | --- | --- | --- |
 | `/` | `GET` | None | Serves the browser application. |
+| `/stats` | `GET` | None | Serves the stats page (see below). |
 | `/api/state` | `GET` | None | Returns the current snapshot. |
 | `/api/actions/start-toggle` | `POST` | None | Starts, pauses, resumes, or finalizes a pending session under the selected label before starting a new one. |
 | `/api/actions/stop` | `POST` | None | Stops running or paused work and enters label mode; otherwise no-op. |
@@ -205,6 +207,7 @@ actions. No build system or client-side framework is used.
 | `/api/labels` | `POST` | `{"name", "color"}` | Adds a label; ignores case-insensitive duplicates. |
 | `/api/labels?name=X` | `DELETE` | `name` query param | Removes a label, clearing the selection if it was the one selected. |
 | `/api/sessions?limit=20` | `GET` | Optional `limit`, default `20` | Returns newest completed sessions first. |
+| `/api/sessions/all` | `GET` | None | Returns every completed session, oldest first, uncapped. Used only by the stats page. |
 | `/api/events` | `GET` | None | Opens an SSE stream with an immediate snapshot plus later mutations. |
 
 ```mermaid
@@ -260,6 +263,43 @@ line is a `role="status"` live region, color dots are `aria-hidden` decoration
 beside a text name, and all text pairs clear 4.5:1 against the `#111` background.
 The elapsed readout is deliberately *not* in a live region - it repaints four times
 a second and would flood a screen reader.
+
+### Stats Page
+
+`app/static/stats.html` is a second, independent static page (same no-build-step,
+inline-CSS/JS convention as `index.html`) for reviewing history: time spent per
+label, broken down by day, week, or month. It is a pure read-over-history view -
+it introduces no new stored data, and does not subscribe to `/api/events`; it
+fetches `/api/sessions/all` and `/api/labels` once on load and does all
+aggregation client-side, matching the app's existing thin-server/smart-client
+split (the server does no bucketing math of its own, same as `/api/state`'s
+snapshot requiring no aggregation).
+
+**Segment-level bucketing.** A session's segments can span many real days (a
+session can be paused and resumed days later without being stopped). Bucketing by
+*session* start, the way `total_seconds_today()` does for the bar's home screen,
+would misattribute that time on a history chart. The stats page instead flattens
+every session into per-segment rows and buckets **each segment's own start
+timestamp** into a local calendar day/week (Monday-start)/month - a segment that
+itself straddles local midnight is not further split; that precision doesn't
+matter at this granularity, and the added complexity isn't worth it. Both
+simplifications are documented in `stats.html`'s own comments, mirroring how
+`total_seconds_today()` documents its.
+
+**Timezone**: bucketing uses the browser's local timezone (via JS `Date`), not
+the server's - a deliberate, documented assumption that browser and server are
+effectively always the same machine for this single-user, LAN-only app.
+
+**Chart**: a hand-rolled SVG stacked bar chart (no library), one bar per bucket
+in a fixed-size window (7 days / 6 weeks / 6 months) that pages via prev/next
+controls, reset to the window containing today whenever granularity changes. To
+keep a single stacked bar legible, the chart caps itself at the **top 6 labels by
+time in the currently-viewed range**, plus a separate "(no label)" segment
+(never folded) and a folded "(Other)" segment for the remainder - the breakdown
+list and the table-view fallback are never capped, since a scrollable list has no
+equivalent readability ceiling. A custom-styled tooltip (not the native browser
+one) shows on hover; keyboard access to every value is via the always-reachable,
+uncapped table view rather than making each stacked segment its own tab stop.
 
 ## BUSY Bar Integration
 On each successful WebSocket connection, the client sends `{"enable": true}`,
@@ -378,13 +418,15 @@ python -m pytest
 | --- | --- | --- |
 | Timer state machine | `tests/test_tracker_core.py` | Transitions, active-time accounting, snapshots, records, serialization, and label/description selection. |
 | Current-state recovery | `tests/test_state_store.py` | Atomic write behavior, restore paths, corrupt and missing-state fallback. |
-| Completed-session log | `tests/test_sessions_store.py` | JSONL append and newest-first reads. |
+| Completed-session log | `tests/test_sessions_store.py` | JSONL append, newest-first capped reads, and uncapped oldest-first reads for the stats page. |
 | Label set | `tests/test_labels_store.py` | Seeding, forgiving parse of hand edits, color normalization, add/delete. |
-| Web API | `tests/test_server_api.py` | Routes and start, pause, resume, stop, label, select-label, label CRUD, and force-skip workflows. |
+| Web API | `tests/test_server_api.py` | Routes and start, pause, resume, stop, label, select-label, label CRUD, force-skip, the stats page route, and `/api/sessions/all`. |
 | Listener supervision | `tests/test_device_listener.py` | Restart and backoff after errors and unexpected returns; encoder handling and redraw debouncing. |
 
 Tests use temporary storage and mock BUSY Bar I/O, so a physical device is not
-needed for validation.
+needed for validation. There is no JS test infrastructure; `index.html` and
+`stats.html`'s client-side logic (including all of the stats page's bucketing,
+chart rendering, and folding behavior) is verified manually in a browser.
 
 The server talks to the configured BUSY Bar through HTTP and a WebSocket status
 stream. Display operations identify this application as `time_tracker` with
