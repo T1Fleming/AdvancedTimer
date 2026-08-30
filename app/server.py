@@ -118,6 +118,9 @@ async def on_encoder(delta):
 
 async def on_device_connect():
     await busybar.force_apps_mode()
+    # The bar may have rebooted while we were disconnected, so don't trust the
+    # cached picture of what's on its display - repaint from scratch.
+    busybar.invalidate()
     await redraw_and_broadcast()
 
 

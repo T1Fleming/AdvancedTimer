@@ -190,9 +190,16 @@ def _back_big_countdown(virtual_start_ts):
 class BusyBarClient:
     def __init__(self):
         self._client = httpx.AsyncClient()
+        # (id, type) pairs currently on the device; None means "unknown", which
+        # forces the next render to clear first. See _render().
+        self._drawn = None
 
     async def aclose(self):
         await self._client.aclose()
+
+    def invalidate(self):
+        """Forget what's on the display, so the next render clears before drawing."""
+        self._drawn = None
 
     async def force_apps_mode(self):
         try:
@@ -209,10 +216,14 @@ class BusyBarClient:
             )
             if r.status_code != 200:
                 print(f"[draw] WARNING status={r.status_code} body={r.text}", flush=True)
+                return False
+            return True
         except httpx.HTTPError as e:
             print(f"[draw] FAILED: {e}", flush=True)
+            return False
 
     async def clear_display(self):
+        self._drawn = None
         try:
             await self._client.delete(
                 f"{config.BASE}/display/draw", params={"application_name": config.APP_NAME}, timeout=2
@@ -221,10 +232,20 @@ class BusyBarClient:
             pass
 
     async def _render(self, elements):
-        # The API rejects reusing an element id with a different type, and screens
-        # swap types freely (text <-> countdown), so clear before every render.
-        await self.clear_display()
-        await self.draw(elements)
+        """Draw `elements`, clearing first only when the element set actually changes.
+
+        Re-posting an id updates that element in place, so an unchanged set needs no
+        clear. That matters because clearing leaves a gap with nothing of ours on
+        screen, through which the device's own mode screen (apps, settings) shows -
+        visible as a flash while spinning the wheel, which redraws rapidly.
+
+        The set is compared by (id, type) because the API rejects reusing an id with
+        a different type; a clear is what makes such a swap legal.
+        """
+        drawn = tuple((element["id"], element["type"]) for element in elements)
+        if drawn != self._drawn:
+            await self.clear_display()
+        self._drawn = drawn if await self.draw(elements) else None
 
     async def draw_home(self, label, color, today_seconds):
         """Idle home screen - proof the server is alive, and the armed label."""
