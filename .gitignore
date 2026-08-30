@@ -1,5 +1,5 @@
 # Runtime data
-sessions.jsonl
+sessions.*
 state.json
 labels.json
 
