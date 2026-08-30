@@ -104,7 +104,9 @@
   #breakdown-list .name { flex: none; width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #breakdown-list .value { flex: none; width: 60px; color: #888; font-variant-numeric: tabular-nums; }
   #breakdown-list .bar-track { flex: 1; height: 8px; background: #1a1a1a; border-radius: 4px; overflow: hidden; }
-  #breakdown-list .bar-fill { height: 100%; border-radius: 4px; }
+  /* display:block - a bare <span> is inline by default, and inline elements
+     ignore `width` entirely, which silently dropped the proportional fill. */
+  #breakdown-list .bar-fill { display: block; height: 100%; border-radius: 4px; }
   #breakdown-empty { color: #888; font-size: 14px; }
 
   /* --- Table-view fallback --- */
