@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app import server
+from app import config, labels_store, server, state_store
 
 
 async def _run_supervisor_until(done_event, timeout=1):
@@ -69,3 +69,42 @@ def test_backs_off_on_clean_return_not_just_exceptions(monkeypatch):
 
     assert len(calls) == 2
     sleep_mock.assert_awaited()
+
+
+# --- Scroll-wheel (encoder) input ---------------------------------------------
+
+def test_encoder_event_advances_the_label_selection(tmp_path, monkeypatch):
+    """A wheel detent moves the selection and persists it, without a button press."""
+    monkeypatch.setattr(config, "LABELS_PATH", tmp_path / "labels.json")
+    monkeypatch.setattr(config, "STATE_PATH", tmp_path / "state.json")
+    monkeypatch.setattr(labels_store, "_cache", {"mtime": None, "labels": None})
+    monkeypatch.setattr(server, "schedule_redraw", lambda *a, **k: None)
+    server.tracker._reset()
+
+    asyncio.run(server.on_encoder(1))
+    assert server.tracker.selected_label == "Cooking"
+
+    asyncio.run(server.on_encoder(-1))
+    assert server.tracker.selected_label == ""
+
+    # ...and it survived to disk, so a crash mid-scroll resumes with it armed.
+    assert state_store.load_state().selected_label == ""
+    server.tracker._reset()
+
+
+def test_rapid_scrolling_coalesces_into_one_redraw(monkeypatch):
+    """Each detent updates state immediately, but only one draw reaches the device."""
+    redraws = []
+
+    async def fake_redraw():
+        redraws.append(1)
+
+    async def scenario():
+        monkeypatch.setattr(server, "redraw_and_broadcast", fake_redraw)
+        for _ in range(10):
+            server.schedule_redraw(0.01)
+        await asyncio.sleep(0.05)
+
+    asyncio.run(scenario())
+
+    assert len(redraws) == 1

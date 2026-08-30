@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """BUSY Bar time tracker web server.
 
-Runs the BUSY Bar device listener (WebSocket button events, display draws) and a
-local web UI in one asyncio event loop, so the physical bar and any browser on the
-network are two equivalent, always-in-sync ways to drive the same session.
+Runs the BUSY Bar device listener (WebSocket button + scroll-wheel events, display
+draws) and a local web UI in one asyncio event loop, so the physical bar and any
+browser on the network are two equivalent, always-in-sync ways to drive the same
+session - including picking its label, which the wheel and the web dropdown both
+feed into one shared selection.
 
 Requires the device to be in "apps" mode (POST /api/input?key=apps is called
 automatically on every WebSocket connect/reconnect, not just at startup) - this
@@ -24,18 +26,45 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, sessions_store, state_store
+from . import config, labels_store, sessions_store, state_store
 from .broadcaster import StateBroadcaster
-from .busybar_client import ACTION_PRESS, BTN_OK, BTN_START, BusyBarClient
+from .busybar_client import ACTION_PRESS, BTN_OK, BTN_START, EV_BUTTON, EV_ENCODER, BusyBarClient
 from .tracker_core import IDLE, PAUSED, PENDING_LABEL, RUNNING
 
 tracker = state_store.load_or_new_tracker()
 busybar = BusyBarClient()
 broadcaster = StateBroadcaster()
 
+_redraw_task = None  # in-flight debounced redraw, see schedule_redraw()
+
 
 class LabelBody(BaseModel):
     label: str = ""
+
+
+class NewLabelBody(BaseModel):
+    name: str
+    color: str = ""
+
+
+def full_snapshot():
+    """The tracker snapshot plus the label set, which the browser needs to render.
+
+    Tracker.snapshot() stays I/O-free, so the labels are attached here instead.
+    Shipping them inside every snapshot means SSE already fans label edits out to
+    every open browser - no second event channel needed.
+    """
+    snapshot = tracker.snapshot()
+    snapshot["labels"] = labels_store.read_labels()
+    return snapshot
+
+
+def _today_seconds():
+    """Active seconds today, including the in-progress session's time so far."""
+    total = sessions_store.total_seconds_today()
+    if tracker.app_state in (RUNNING, PAUSED):
+        total += tracker.accumulated
+    return total
 
 
 async def redraw_and_broadcast():
@@ -44,21 +73,47 @@ async def redraw_and_broadcast():
     Reused after every mutation, and again on every device (re)connect so the bar's
     display can't drift from server-side state after it loses power independently.
     """
+    label = tracker.selected_label
+    color = labels_store.color_for(label)
+    today = _today_seconds()
     if tracker.app_state == RUNNING:
-        await busybar.draw_running(tracker.virtual_start_ts())
+        await busybar.draw_running(tracker.virtual_start_ts(), label, color, today)
     elif tracker.app_state == PAUSED:
-        await busybar.draw_paused(tracker.accumulated)
+        await busybar.draw_paused(tracker.accumulated, label, color, today)
     elif tracker.app_state == PENDING_LABEL:
-        await busybar.draw_pending_label(tracker.pending["total_active_seconds"])
+        await busybar.draw_pending_label(tracker.pending["total_active_seconds"], label, color, today)
     elif tracker.app_state == IDLE:
-        await busybar.clear_display()
-    broadcaster.publish(tracker.snapshot())
+        await busybar.draw_home(label, color, today)
+    broadcaster.publish(full_snapshot())
 
 
 async def apply_and_broadcast(mutation):
     mutation(tracker)
     state_store.save_state(tracker)
     await redraw_and_broadcast()
+
+
+async def _delayed_redraw(delay):
+    try:
+        await asyncio.sleep(delay)
+        await redraw_and_broadcast()
+    except asyncio.CancelledError:
+        pass  # superseded by a newer scroll event
+
+
+def schedule_redraw(delay=config.ENCODER_REDRAW_DEBOUNCE_S):
+    """Coalesce a burst of redraws into one, so a fast wheel flick isn't one HTTP
+    draw per detent. State itself is already updated - only the drawing waits."""
+    global _redraw_task
+    if _redraw_task is not None and not _redraw_task.done():
+        _redraw_task.cancel()
+    _redraw_task = asyncio.create_task(_delayed_redraw(delay))
+
+
+async def on_encoder(delta):
+    tracker.cycle_selected_label(delta, labels_store.selection_names())
+    state_store.save_state(tracker)
+    schedule_redraw()
 
 
 async def on_device_connect():
@@ -68,13 +123,14 @@ async def on_device_connect():
 
 async def _device_listener():
     print("BUSY Bar time tracker running. Press start on the bar to begin.", flush=True)
-    async for button, action in busybar.button_events(on_connect=on_device_connect):
-        if action != ACTION_PRESS:
-            continue
-        if button == BTN_START:
-            await apply_and_broadcast(lambda t: t.toggle_start())
-        elif button == BTN_OK:
-            await apply_and_broadcast(lambda t: t.stop())
+    async for kind, value, action in busybar.input_events(on_connect=on_device_connect):
+        if kind == EV_ENCODER:
+            await on_encoder(value)
+        elif kind == EV_BUTTON and action == ACTION_PRESS:
+            if value == BTN_START:
+                await apply_and_broadcast(lambda t: t.toggle_start())
+            elif value == BTN_OK:
+                await apply_and_broadcast(lambda t: t.ok_press())
 
 
 async def device_listener():
@@ -99,6 +155,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         task.cancel()
+        if _redraw_task is not None:
+            _redraw_task.cancel()
         await busybar.clear_display()
         await busybar.aclose()
 
@@ -116,25 +174,55 @@ async def index():
 
 @app.get("/api/state")
 async def get_state():
-    return tracker.snapshot()
+    return full_snapshot()
 
 
 @app.post("/api/actions/start-toggle")
 async def start_toggle():
     await apply_and_broadcast(lambda t: t.toggle_start())
-    return tracker.snapshot()
+    return full_snapshot()
 
 
 @app.post("/api/actions/stop")
 async def stop():
     await apply_and_broadcast(lambda t: t.stop())
-    return tracker.snapshot()
+    return full_snapshot()
 
 
 @app.post("/api/actions/label")
 async def submit_label(body: LabelBody):
     await apply_and_broadcast(lambda t: t.submit_label(body.label))
-    return tracker.snapshot()
+    return full_snapshot()
+
+
+@app.post("/api/actions/select-label")
+async def select_label(body: LabelBody):
+    """Arm a label from the web UI - the mirror of turning the bar's scroll wheel."""
+    await apply_and_broadcast(lambda t: t.set_selected_label(body.label))
+    return full_snapshot()
+
+
+@app.get("/api/labels")
+async def get_labels():
+    return labels_store.read_labels()
+
+
+@app.post("/api/labels")
+async def add_label(body: NewLabelBody):
+    labels_store.add_label(body.name, body.color or None)
+    await redraw_and_broadcast()
+    return labels_store.read_labels()
+
+
+@app.delete("/api/labels")
+async def delete_label(name: str):
+    labels_store.delete_label(name)
+    if tracker.selected_label == name:
+        # Don't leave a session armed with a label that no longer exists.
+        await apply_and_broadcast(lambda t: t.set_selected_label(""))
+    else:
+        await redraw_and_broadcast()
+    return labels_store.read_labels()
 
 
 @app.get("/api/sessions")
@@ -148,7 +236,7 @@ async def events():
 
     async def stream():
         try:
-            yield f"data: {json.dumps(tracker.snapshot())}\n\n"
+            yield f"data: {json.dumps(full_snapshot())}\n\n"
             while True:
                 snapshot = await queue.get()
                 yield f"data: {json.dumps(snapshot)}\n\n"

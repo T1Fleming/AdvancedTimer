@@ -23,27 +23,47 @@
   button:disabled { opacity: 0.35; }
   #primary { background: #1f7a3f; }
   #stop { background: #7a2020; }
-  #label-panel { display: none; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 320px; }
-  #label-panel input {
-    width: 100%; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #444;
+  input, select {
+    font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #444;
     background: #1a1a1a; color: #eee; box-sizing: border-box;
   }
-  #label-panel .row { display: flex; gap: 12px; width: 100%; }
-  #label-panel button { flex: 1; }
-  #sessions { width: 100%; max-width: 420px; }
-  #sessions h2 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }
-  #sessions ul { list-style: none; margin: 0; padding: 0; }
-  #sessions li {
-    display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #222;
-    font-size: 14px;
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex: none;
+    background: #555; display: inline-block;
   }
-  #sessions .label { color: #eee; }
-  #sessions .meta { color: #888; }
+  #label-picker {
+    display: flex; align-items: center; gap: 10px; width: 100%; max-width: 320px;
+  }
+  #label-picker select { flex: 1; }
+  #label-panel { display: none; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 320px; }
+  .row { display: flex; gap: 12px; width: 100%; }
+  #label-panel button { flex: 1; }
+  section { width: 100%; max-width: 420px; }
+  section h2 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }
+  section ul { list-style: none; margin: 0; padding: 0; }
+  section li {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid #222; font-size: 14px;
+  }
+  .name { color: #eee; flex: 1; }
+  .meta { color: #888; }
+  #labels-list button {
+    font-size: 16px; min-width: 0; padding: 4px 10px; background: none; color: #666;
+  }
+  #labels-add { margin-top: 12px; }
+  #labels-add input[type=text] { flex: 1; min-width: 0; }
+  #labels-add input[type=color] { width: 44px; padding: 4px; }
+  #labels-add button { min-width: 0; padding: 10px 18px; font-size: 16px; }
 </style>
 </head>
 <body>
   <div id="state">idle</div>
   <div id="elapsed">00:00</div>
+
+  <div id="label-picker">
+    <span id="label-dot" class="dot"></span>
+    <select id="label-select"></select>
+  </div>
 
   <div class="controls" id="controls">
     <button id="primary">Start</button>
@@ -51,17 +71,26 @@
   </div>
 
   <div id="label-panel">
-    <input id="label-input" type="text" placeholder="Session label (optional)" autocomplete="off">
     <div class="row">
       <button id="skip">Skip</button>
       <button id="save">Save</button>
     </div>
   </div>
 
-  <div id="sessions">
+  <section id="labels">
+    <h2>Labels</h2>
+    <ul id="labels-list"></ul>
+    <div class="row" id="labels-add">
+      <input id="new-label-name" type="text" placeholder="New label" autocomplete="off">
+      <input id="new-label-color" type="color" value="#38BDF8">
+      <button id="add-label">Add</button>
+    </div>
+  </section>
+
+  <section id="sessions">
     <h2>Recent sessions</h2>
     <ul id="sessions-list"></ul>
-  </div>
+  </section>
 
 <script>
 const stateEl = document.getElementById('state');
@@ -70,13 +99,21 @@ const controlsEl = document.getElementById('controls');
 const primaryBtn = document.getElementById('primary');
 const stopBtn = document.getElementById('stop');
 const labelPanel = document.getElementById('label-panel');
-const labelInput = document.getElementById('label-input');
+const labelSelect = document.getElementById('label-select');
+const labelDot = document.getElementById('label-dot');
 const saveBtn = document.getElementById('save');
 const skipBtn = document.getElementById('skip');
+const labelsList = document.getElementById('labels-list');
+const newLabelName = document.getElementById('new-label-name');
+const newLabelColor = document.getElementById('new-label-color');
+const addLabelBtn = document.getElementById('add-label');
 const sessionsList = document.getElementById('sessions-list');
 
-let current = { state: 'IDLE', accumulated_seconds: 0, current_segment_start: null };
+const NONE_COLOR = '#555555';
+
+let current = { state: 'IDLE', accumulated_seconds: 0, current_segment_start: null, selected_label: '', labels: [] };
 let tickHandle = null;
+let renderedLabelsKey = null;
 
 function formatDuration(totalSeconds) {
   totalSeconds = Math.max(0, Math.round(totalSeconds));
@@ -96,6 +133,62 @@ function liveElapsed() {
   return seconds;
 }
 
+// The device wants #RRGGBBAA; CSS and <input type=color> want #RRGGBB.
+function cssColor(color) {
+  return color ? color.slice(0, 7) : NONE_COLOR;
+}
+
+function colorForLabel(name) {
+  const match = (current.labels || []).find((l) => l.name === name);
+  return match ? cssColor(match.color) : NONE_COLOR;
+}
+
+function renderLabelPicker() {
+  const labels = current.labels || [];
+  // Only rebuild the <option> list when the label set actually changed, so an open
+  // dropdown isn't yanked out from under the user on every incoming snapshot.
+  const key = JSON.stringify(labels);
+  if (key !== renderedLabelsKey) {
+    renderedLabelsKey = key;
+    labelSelect.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '— no label —';
+    labelSelect.appendChild(none);
+    for (const label of labels) {
+      const option = document.createElement('option');
+      option.value = label.name;
+      option.textContent = label.name;
+      labelSelect.appendChild(option);
+    }
+  }
+  labelSelect.value = current.selected_label || '';
+  labelDot.style.background = colorForLabel(current.selected_label);
+}
+
+function renderLabelsManager() {
+  labelsList.innerHTML = '';
+  for (const label of current.labels || []) {
+    const li = document.createElement('li');
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = cssColor(label.color);
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = label.name;
+
+    const remove = document.createElement('button');
+    remove.textContent = '×';
+    remove.title = `Delete ${label.name}`;
+    remove.addEventListener('click', () => deleteLabel(label.name));
+
+    li.append(dot, name, remove);
+    labelsList.appendChild(li);
+  }
+}
+
 function render() {
   stateEl.textContent = current.state.replace('_', ' ').toLowerCase();
 
@@ -105,16 +198,19 @@ function render() {
     elapsedEl.textContent = formatDuration(liveElapsed());
   }
 
+  renderLabelPicker();
+  renderLabelsManager();
+
   controlsEl.style.display = current.state === 'PENDING_LABEL' ? 'none' : 'flex';
   labelPanel.style.display = current.state === 'PENDING_LABEL' ? 'flex' : 'none';
 
+  if (tickHandle) clearInterval(tickHandle);
   if (current.state === 'PENDING_LABEL') return;
 
   primaryBtn.textContent = current.state === 'RUNNING' ? 'Pause'
     : current.state === 'PAUSED' ? 'Resume' : 'Start';
   stopBtn.disabled = current.state === 'IDLE';
 
-  if (tickHandle) clearInterval(tickHandle);
   if (current.state === 'RUNNING') {
     tickHandle = setInterval(() => { elapsedEl.textContent = formatDuration(liveElapsed()); }, 250);
   }
@@ -136,27 +232,55 @@ async function postAction(path, body) {
 
 primaryBtn.addEventListener('click', () => postAction('/api/actions/start-toggle'));
 stopBtn.addEventListener('click', () => postAction('/api/actions/stop'));
-saveBtn.addEventListener('click', () => {
-  postAction('/api/actions/label', { label: labelInput.value });
-  labelInput.value = '';
+labelSelect.addEventListener('change', () => {
+  postAction('/api/actions/select-label', { label: labelSelect.value });
 });
-skipBtn.addEventListener('click', () => {
-  postAction('/api/actions/label', { label: '' });
-  labelInput.value = '';
-});
+saveBtn.addEventListener('click', () => postAction('/api/actions/label', { label: labelSelect.value }));
+skipBtn.addEventListener('click', () => postAction('/api/actions/label', { label: '' }));
+
+async function refreshLabels() {
+  const res = await fetch('/api/state');
+  applySnapshot(await res.json());
+}
+
+async function addLabel() {
+  const name = newLabelName.value.trim();
+  if (!name) return;
+  await fetch('/api/labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, color: newLabelColor.value }),
+  });
+  newLabelName.value = '';
+  refreshLabels();
+}
+
+async function deleteLabel(name) {
+  await fetch(`/api/labels?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+  refreshLabels();
+}
+
+addLabelBtn.addEventListener('click', addLabel);
+newLabelName.addEventListener('keydown', (e) => { if (e.key === 'Enter') addLabel(); });
 
 function renderSessions(sessions) {
   sessionsList.innerHTML = '';
   for (const s of sessions) {
     const li = document.createElement('li');
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.textContent = s.label || '(no label)';
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = colorForLabel(s.label);
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = s.label || '(no label)';
+
     const meta = document.createElement('span');
     meta.className = 'meta';
     meta.textContent = formatDuration(s.total_active_seconds);
-    li.appendChild(label);
-    li.appendChild(meta);
+
+    li.append(dot, name, meta);
     sessionsList.appendChild(li);
   }
 }

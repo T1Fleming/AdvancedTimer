@@ -29,7 +29,10 @@ APP_NAME = "time_tracker"
 PRIORITY = 90
 LOG_PATH = ROOT / "sessions.jsonl"
 STATE_PATH = ROOT / "state.json"
+LABELS_PATH = ROOT / "labels.json"
 MAX_EVENT_AGE_MS = 2000
+# Coalesce a fast scroll-wheel flick into one display redraw instead of one per detent.
+ENCODER_REDRAW_DEBOUNCE_S = 0.15
 
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.getenv("WEB_PORT", "8765"))

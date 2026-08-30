@@ -1,6 +1,7 @@
 # Runtime data
 sessions.jsonl
 state.json
+labels.json
 
 # Local agent and editor settings
 .claude/

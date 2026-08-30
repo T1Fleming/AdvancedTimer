@@ -1,6 +1,12 @@
 """Pure timer state machine - no I/O, no asyncio, no device/display knowledge.
 
 States: IDLE -> RUNNING <-> PAUSED -> PENDING_LABEL -> IDLE.
+
+Also owns `selected_label`, the label armed for the current session ("" = none).
+It can be set at any point - before starting, mid-session, or while a finished
+session waits to be filed - and resets to "" once a session is filed. The list of
+available labels lives in labels_store and is passed into cycle_selected_label(),
+so this module stays free of I/O.
 """
 import time
 from datetime import datetime, timezone
@@ -32,6 +38,7 @@ class Tracker:
         self.current_segment_start = None
         self.accumulated = 0.0
         self.pending = None  # finalized session data, set while PENDING_LABEL
+        self.selected_label = ""  # armed label, "" = none; picked by wheel or web UI
 
     def to_dict(self):
         return {
@@ -41,6 +48,7 @@ class Tracker:
             "current_segment_start": self.current_segment_start,
             "accumulated": self.accumulated,
             "pending": self.pending,
+            "selected_label": self.selected_label,
         }
 
     @classmethod
@@ -52,16 +60,45 @@ class Tracker:
         t.current_segment_start = data["current_segment_start"]
         t.accumulated = data["accumulated"]
         t.pending = data["pending"]
+        # .get: a state.json written before labels existed must still resume.
+        t.selected_label = data.get("selected_label", "")
         return t
 
     def virtual_start_ts(self):
         """Timestamp the on-device countdown element should count up from."""
         return (self.current_segment_start or time.time()) - self.accumulated
 
+    def set_selected_label(self, name):
+        self.selected_label = name or ""
+
+    def cycle_selected_label(self, delta, names):
+        """Move the selection `delta` steps through `names`, wrapping around.
+
+        `names` is passed in rather than read from disk so this module stays pure;
+        names[0] is expected to be the "" none sentinel.
+        """
+        if not names:
+            return
+        try:
+            index = names.index(self.selected_label)
+        except ValueError:
+            index = 0  # selection was deleted out from under us
+        self.selected_label = names[(index + delta) % len(names)]
+
+    def ok_press(self):
+        """The bar's OK button: confirm the armed label when one is pending, else stop."""
+        if self.app_state == PENDING_LABEL:
+            self.submit_label(self.selected_label)
+        else:
+            self.stop()
+
     def toggle_start(self):
         if self.app_state == PENDING_LABEL:
-            self._finalize_label("")  # force-skip: label this session as unlabeled...
-            self._start_new_session()  # ...and start a fresh one immediately
+            # Force-skip: file this session under whatever is armed (nothing, unless
+            # the wheel was used), then start a fresh one immediately.
+            self._finalize_label(self.selected_label)
+            self.selected_label = ""
+            self._start_new_session()
             return
         if self.app_state == IDLE:
             self._start_new_session()
@@ -97,6 +134,7 @@ class Tracker:
             "session_start": now_iso(self.session_start) if self.session_start else None,
             "current_segment_start": now_iso(self.current_segment_start) if self.current_segment_start else None,
             "accumulated_seconds": self.accumulated,
+            "selected_label": self.selected_label,
         }
         if self.app_state == PENDING_LABEL and self.pending:
             data["pending"] = {
@@ -155,3 +193,4 @@ class Tracker:
         self.current_segment_start = None
         self.accumulated = 0.0
         self.pending = None
+        self.selected_label = ""  # a filed session always returns the wheel to (none)
