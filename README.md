@@ -50,34 +50,87 @@ Open `http://<this computer's LAN IP>:8765/` from any browser on the same Wi-Fi
 network, including your phone. There's no login - anyone on your network can open
 the page, the same trust level as the bar's own LAN API.
 
+A "Stats" link in the corner opens `/stats`, a history view: a stacked bar chart
+of time spent per label, switchable between day/week/month and paged with
+prev/next controls, plus a ranked breakdown and a table view of everything
+logged. It's read-only and computed entirely in the browser from your existing
+session history - nothing new is tracked to produce it.
+
 ## Controls
 
 Both the bar's physical buttons and the web UI control the same session:
 
 - **START** (bar) / **Start-Pause-Resume** (web): start, pause, or resume the
   current session
-- **OK** (bar) / **Stop** (web): stop the session, then enter or skip a label from
-  the web UI
-- Pressing **START** on the bar while a stopped session is awaiting a label skips
-  labeling it and immediately starts a new session (the bar has no way to type a
-  label) - **OK** does nothing in that state, since there's nothing left to stop
+- **OK** (bar) / **Stop** (web): stop the running session. Press **OK** again on
+  the stopped session to file it under the currently selected label
+- **Scroll wheel** (bar) / **the dropdown** (web): pick the session's label. This
+  works in every state - spin it on the home screen to arm a label before you
+  start, mid-session to change your mind, or on the end-of-session screen to
+  choose before pressing OK
+- **Description** (web only): an optional free-text note about what you actually
+  did. Like the label it can be written at any point, and it's saved as you type,
+  so it survives a page refresh, a server restart, or a crash. The bar has no
+  keyboard and never displays it
+- Pressing **START** on the bar while a stopped session is awaiting a label files
+  it under whatever label is selected (nothing, unless you used the wheel) and
+  immediately starts a new session
 
-While a session is running, both the bar's display and the web UI show the active
-elapsed time. While paused, they show the accumulated active duration. While
-awaiting a label, the bar shows the final elapsed time and "SEE PHONE".
+Because the wheel reaches every state and OK confirms, a session can be labeled
+entirely from the bar - the phone is no longer required.
+
+The bar shows a home screen whenever the server is running and nothing is
+tracking: today's total tracked time and the label armed for the next session.
+While running it shows the label and a live elapsed count; while paused, the
+accumulated active duration; and when a session is awaiting a label, the final
+duration with the label picker. The selected label's color runs down the left
+edge of the front display, and the larger back display carries the same
+information at a glance.
+
+## Labels ("modes")
+
+The server keeps a set of labels in `labels.json` at the repo root. It's created
+automatically the first time the server runs, seeded with Cooking, Coding, and
+Gaming.
+
+Add or remove labels from the web UI's **Labels** section, or edit the file
+directly - it's re-read whenever it changes, so hand edits take effect without
+restarting the server. The format is a JSON array, and a plain string works fine
+if you don't care which color you get:
+
+```json
+[
+  {"name": "Cooking", "color": "#FF8A3D"},
+  {"name": "Coding", "color": "#3DD68C"},
+  "Woodworking"
+]
+```
+
+Colors accept `#RGB`, `#RRGGBB`, or `#RRGGBBAA`. A missing or unparseable color
+falls back to a built-in palette color, and a malformed entry is skipped with a
+warning rather than taking down the whole list.
+
+Every session starts with no label selected, so leaving the wheel and the dropdown
+alone gives you an unlabeled session exactly as before. Deleting a label only
+affects the picker - sessions already logged keep the label text they were filed
+under.
+
+`labels.json` is gitignored alongside the other runtime data files.
 
 ## Session data
 
 Completed sessions are appended as JSON Lines to `sessions.jsonl`, and the web UI's
 "Recent sessions" list reads from the same file. This file is intentionally ignored
 by Git because it contains personal activity timestamps. Each record includes the
-session start and end, total active seconds, optional label, and active time
-segments.
+session start and end, total active seconds, optional label and description, and
+active time segments. Sessions logged before a field existed simply lack that key -
+there's no migration, so anything reading the file should default to `""`.
 
 ## Crash / restart resilience
 
 The current in-progress session (running, paused, or awaiting a label - including
-its active-time segments so far) is persisted to `state.json` after every action
+its active-time segments so far and the label and description currently entered) is
+persisted to `state.json` after every action
 and automatically restored the next time you run `python -m app.server`, whether
 the previous run ended in a clean shutdown, a crash, or a power loss. Any downtime
 isn't specially accounted for - elapsed time just keeps counting from where it left
@@ -114,9 +167,9 @@ python -m pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Tests cover the timer state machine, the sessions store, and the web API end to
-end - the BUSY Bar's own HTTP/WebSocket calls are stubbed out, so no physical
-device is needed to run them.
+Tests cover the timer state machine, the sessions and label stores, label
+selection, and the web API end to end - the BUSY Bar's own HTTP/WebSocket calls
+are stubbed out, so no physical device is needed to run them.
 
 ## Project layout
 
@@ -126,9 +179,12 @@ device is needed to run them.
 - `app/busybar_client.py` - async BUSY Bar HTTP/WebSocket client and display draws
 - `app/sessions_store.py` - reads/appends `sessions.jsonl`
 - `app/state_store.py` - persists/restores the in-progress session to `state.json`
+- `app/labels_store.py` - reads/writes the label set in `labels.json`
+- `app/atomic_io.py` - atomic JSON writes shared by both stores
 - `app/broadcaster.py` - fans timer-state updates out to connected browsers
 - `app/config.py` - environment/config loading
 - `app/static/index.html` - the web UI (single page, no build step)
+- `app/static/stats.html` - the stats page: history by label, no build step
 - `app/pb/proto/` - protobuf definitions used by the device protocol
 - `app/pb/*_pb2.py` - generated Python protobuf modules
 - `tests/` - unit and API tests (see Testing above)
@@ -138,3 +194,4 @@ device is needed to run them.
 - `pyproject.toml` - pytest configuration
 - `sessions.jsonl` - session log (repo root, gitignored)
 - `state.json` - in-progress session state for crash resume (repo root, gitignored)
+- `labels.json` - the label set (repo root, gitignored, auto-seeded)

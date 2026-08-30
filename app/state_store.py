@@ -1,21 +1,15 @@
 """Persist/restore the in-progress Tracker so a crash or power loss can be resumed."""
 import json
-import os
 
 from . import config
+from .atomic_io import write_json_atomic
 from .tracker_core import Tracker
 
 
 def save_state(tracker):
     """Best-effort atomic write of the full in-progress Tracker state. Never raises."""
     try:
-        data = json.dumps(tracker.to_dict())
-        tmp_path = config.STATE_PATH.parent / (config.STATE_PATH.name + ".tmp")
-        with open(tmp_path, "w") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, config.STATE_PATH)
+        write_json_atomic(config.STATE_PATH, tracker.to_dict())
     except Exception as e:
         print(f"[state_store] WARNING: failed to save state: {e}", flush=True)
 

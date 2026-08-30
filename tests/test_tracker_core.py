@@ -1,7 +1,9 @@
 import pytest
 
 from app import config, sessions_store
-from app.tracker_core import IDLE, PAUSED, PENDING_LABEL, RUNNING, Tracker
+from app.tracker_core import (
+    IDLE, MAX_DESCRIPTION_CHARS, PAUSED, PENDING_LABEL, RUNNING, Tracker,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -151,3 +153,183 @@ def test_to_dict_from_dict_round_trip_while_pending_label():
 
     assert restored.snapshot() == t.snapshot()
     assert restored.pending == t.pending
+
+
+# --- Label selection ("modes") -------------------------------------------------
+
+NAMES = ["", "Cooking", "Coding", "Gaming"]  # what labels_store.selection_names() returns
+
+
+def test_selection_starts_on_the_none_sentinel():
+    assert Tracker().selected_label == ""
+
+
+def test_cycle_selected_label_wraps_in_both_directions():
+    t = Tracker()
+    t.cycle_selected_label(1, NAMES)
+    assert t.selected_label == "Cooking"
+    t.cycle_selected_label(2, NAMES)
+    assert t.selected_label == "Gaming"
+    t.cycle_selected_label(1, NAMES)
+    assert t.selected_label == ""  # wrapped past the end
+    t.cycle_selected_label(-1, NAMES)
+    assert t.selected_label == "Gaming"  # wrapped back past the start
+
+
+def test_cycle_from_a_label_that_no_longer_exists_restarts_at_none():
+    t = Tracker()
+    t.set_selected_label("Deleted")
+    t.cycle_selected_label(1, NAMES)
+    assert t.selected_label == "Cooking"
+
+
+def test_cycle_with_no_labels_is_a_noop():
+    t = Tracker()
+    t.cycle_selected_label(1, [])
+    assert t.selected_label == ""
+
+
+def test_selection_survives_a_state_round_trip():
+    t = Tracker()
+    t.set_selected_label("Coding")
+    t.toggle_start()
+
+    restored = Tracker.from_dict(t.to_dict())
+
+    assert restored.selected_label == "Coding"
+    assert restored.snapshot() == t.snapshot()
+
+
+def test_from_dict_defaults_selection_for_pre_label_state_files():
+    """A state.json written before labels existed must still resume."""
+    legacy = Tracker().to_dict()
+    del legacy["selected_label"]
+    assert Tracker.from_dict(legacy).selected_label == ""
+
+
+def test_ok_press_stops_a_running_session():
+    t = Tracker()
+    t.toggle_start()
+    t.ok_press()
+    assert t.app_state == PENDING_LABEL
+
+
+def test_ok_press_files_the_selected_label_when_pending():
+    t = Tracker()
+    t.set_selected_label("Gaming")
+    t.toggle_start()
+    t.ok_press()  # stop
+    t.ok_press()  # confirm the armed label, entirely from the bar
+
+    assert t.app_state == IDLE
+    assert sessions_store.read_recent_sessions()[0]["label"] == "Gaming"
+
+
+def test_filing_a_session_returns_the_wheel_to_none():
+    t = Tracker()
+    t.set_selected_label("Cooking")
+    t.toggle_start()
+    t.stop()
+    t.submit_label("Cooking")
+    assert t.selected_label == ""
+
+
+def test_start_toggle_from_pending_files_selection_then_clears_it():
+    t = Tracker()
+    t.set_selected_label("Coding")
+    t.toggle_start()
+    t.stop()
+    t.toggle_start()  # force-skip into a fresh session
+
+    assert t.app_state == RUNNING
+    assert sessions_store.read_recent_sessions()[0]["label"] == "Coding"
+    assert t.selected_label == ""
+
+
+# --- Session description -------------------------------------------------------
+
+def test_description_starts_blank():
+    assert Tracker().selected_description == ""
+
+
+def test_description_is_stripped_and_capped():
+    t = Tracker()
+    t.set_selected_description("  spaced out  ")
+    assert t.selected_description == "spaced out"
+
+    t.set_selected_description("x" * 900)
+    assert len(t.selected_description) == MAX_DESCRIPTION_CHARS
+
+    t.set_selected_description(None)
+    assert t.selected_description == ""
+
+
+def test_description_survives_a_state_round_trip():
+    t = Tracker()
+    t.set_selected_description("refactored the label store")
+    t.toggle_start()
+
+    restored = Tracker.from_dict(t.to_dict())
+
+    assert restored.selected_description == "refactored the label store"
+    assert restored.snapshot() == t.snapshot()
+
+
+def test_from_dict_defaults_description_for_pre_description_state_files():
+    """A state.json written before descriptions existed must still resume."""
+    legacy = Tracker().to_dict()
+    del legacy["selected_description"]
+    assert Tracker.from_dict(legacy).selected_description == ""
+
+
+def test_description_reaches_the_session_record():
+    t = Tracker()
+    t.toggle_start()
+    t.stop()
+    t.submit_label("Coding", "wired up the description field")
+
+    record = sessions_store.read_recent_sessions()[0]
+    assert record["label"] == "Coding"
+    assert record["description"] == "wired up the description field"
+
+
+def test_description_defaults_to_blank_in_the_record():
+    t = Tracker()
+    t.toggle_start()
+    t.stop()
+    t.submit_label("Coding")
+
+    assert sessions_store.read_recent_sessions()[0]["description"] == ""
+
+
+def test_ok_press_files_the_armed_description():
+    t = Tracker()
+    t.set_selected_label("Gaming")
+    t.set_selected_description("ranked matches")
+    t.toggle_start()
+    t.ok_press()  # stop
+    t.ok_press()  # file it
+
+    record = sessions_store.read_recent_sessions()[0]
+    assert (record["label"], record["description"]) == ("Gaming", "ranked matches")
+
+
+def test_filing_a_session_clears_the_description():
+    t = Tracker()
+    t.set_selected_description("done for now")
+    t.toggle_start()
+    t.stop()
+    t.submit_label("", "done for now")
+    assert t.selected_description == ""
+
+
+def test_start_toggle_from_pending_files_description_then_clears_it():
+    t = Tracker()
+    t.set_selected_description("bar force-skip")
+    t.toggle_start()
+    t.stop()
+    t.toggle_start()
+
+    assert t.app_state == RUNNING
+    assert sessions_store.read_recent_sessions()[0]["description"] == "bar force-skip"
+    assert t.selected_description == ""

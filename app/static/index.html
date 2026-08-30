@@ -10,8 +10,26 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: #111; color: #eee;
     margin: 0; padding: 24px 16px;
+  }
+  main {
     display: flex; flex-direction: column; align-items: center; gap: 24px;
   }
+
+  /* Available to screen readers, removed from the visual layout. */
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  /* Buttons are border-less on a dark background - don't rely on the UA ring. */
+  :focus-visible { outline: 2px solid #7cc4ff; outline-offset: 2px; }
+
+  .top-nav { align-self: flex-end; }
+  .top-nav a {
+    color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;
+    text-decoration: none;
+  }
+  .top-nav a:hover { color: #eee; }
+
   #state { font-size: 14px; letter-spacing: 0.1em; color: #888; text-transform: uppercase; }
   #elapsed { font-size: 56px; font-variant-numeric: tabular-nums; font-weight: 600; }
   .controls { display: flex; gap: 12px; }
@@ -23,45 +41,110 @@
   button:disabled { opacity: 0.35; }
   #primary { background: #1f7a3f; }
   #stop { background: #7a2020; }
-  #label-panel { display: none; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 320px; }
-  #label-panel input {
-    width: 100%; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #444;
+  input, select {
+    font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #444;
     background: #1a1a1a; color: #eee; box-sizing: border-box;
   }
-  #label-panel .row { display: flex; gap: 12px; width: 100%; }
-  #label-panel button { flex: 1; }
-  #sessions { width: 100%; max-width: 420px; }
-  #sessions h2 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }
-  #sessions ul { list-style: none; margin: 0; padding: 0; }
-  #sessions li {
-    display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #222;
-    font-size: 14px;
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex: none;
+    background: #777; display: inline-block;
   }
-  #sessions .label { color: #eee; }
-  #sessions .meta { color: #888; }
+
+  #session-meta {
+    display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px;
+  }
+  #label-picker { display: flex; align-items: center; gap: 10px; }
+  #label-picker select { flex: 1; }
+  #description { width: 100%; }
+
+  #label-panel { display: none; gap: 12px; width: 100%; max-width: 320px; }
+  .row { display: flex; gap: 12px; width: 100%; }
+  #label-panel button { flex: 1; }
+
+  section, #labels { width: 100%; max-width: 420px; }
+  h2 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }
+  /* The summary's heading carries the styling; the h2's own block margins would
+     otherwise push the disclosure marker out of line with its text. */
+  summary h2 { display: inline; margin: 0; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid #222; font-size: 14px;
+  }
+  li .dot { margin-top: 4px; }
+  .body { flex: 1; min-width: 0; }
+  .head { display: flex; justify-content: space-between; gap: 10px; }
+  .name { color: #eee; }
+  .meta { color: #888; font-variant-numeric: tabular-nums; flex: none; }
+  .desc { color: #888; margin: 2px 0 0; overflow-wrap: anywhere; }
+
+  #labels summary { cursor: pointer; padding: 8px 0; }
+  #labels[open] summary { margin-bottom: 4px; }
+  #labels-list button {
+    font-size: 18px; line-height: 1; min-width: 32px; min-height: 32px;
+    padding: 0; background: none; color: #8a8a8a;
+  }
+  #labels-add { margin-top: 12px; }
+  #labels-add input[type=text] { flex: 1; min-width: 0; }
+  #labels-add input[type=color] { width: 44px; padding: 4px; }
+  #labels-add button { min-width: 0; padding: 10px 18px; font-size: 16px; }
 </style>
 </head>
 <body>
-  <div id="state">idle</div>
-  <div id="elapsed">00:00</div>
+<main>
+  <nav class="top-nav"><a href="/stats">Stats &#8594;</a></nav>
+
+  <h1 class="visually-hidden">BUSY Bar time tracker</h1>
+
+  <div id="state" role="status">idle</div>
+
+  <div>
+    <span class="visually-hidden">Elapsed time</span>
+    <div id="elapsed">00:00</div>
+  </div>
+
+  <div id="session-meta">
+    <div id="label-picker">
+      <span id="label-dot" class="dot" aria-hidden="true"></span>
+      <label class="visually-hidden" for="label-select">Session label</label>
+      <select id="label-select"></select>
+    </div>
+    <label class="visually-hidden" for="description">Session description</label>
+    <input id="description" type="text" placeholder="What are you working on? (optional)"
+           autocomplete="off" maxlength="500">
+  </div>
 
   <div class="controls" id="controls">
-    <button id="primary">Start</button>
-    <button id="stop" disabled>Stop</button>
+    <button id="primary" type="button">Start</button>
+    <button id="stop" type="button" disabled>Stop</button>
   </div>
 
   <div id="label-panel">
-    <input id="label-input" type="text" placeholder="Session label (optional)" autocomplete="off">
     <div class="row">
-      <button id="skip">Skip</button>
-      <button id="save">Save</button>
+      <button id="skip" type="button">Skip</button>
+      <button id="save" type="button">Save</button>
     </div>
   </div>
 
-  <div id="sessions">
-    <h2>Recent sessions</h2>
+  <!-- Collapsed this is 32px, so it sits next to the picker it configures rather
+       than below a session list that can run past 1200px. -->
+  <details id="labels">
+    <summary><h2 id="labels-summary">Labels</h2></summary>
+    <ul id="labels-list"></ul>
+    <div class="row" id="labels-add">
+      <label class="visually-hidden" for="new-label-name">New label name</label>
+      <input id="new-label-name" type="text" placeholder="New label" autocomplete="off">
+      <label class="visually-hidden" for="new-label-color">New label color</label>
+      <input id="new-label-color" type="color" value="#38BDF8">
+      <button id="add-label" type="button">Add</button>
+    </div>
+  </details>
+
+  <section id="sessions" aria-labelledby="sessions-heading">
+    <h2 id="sessions-heading">Recent sessions</h2>
     <ul id="sessions-list"></ul>
-  </div>
+  </section>
+</main>
 
 <script>
 const stateEl = document.getElementById('state');
@@ -70,13 +153,28 @@ const controlsEl = document.getElementById('controls');
 const primaryBtn = document.getElementById('primary');
 const stopBtn = document.getElementById('stop');
 const labelPanel = document.getElementById('label-panel');
-const labelInput = document.getElementById('label-input');
+const labelSelect = document.getElementById('label-select');
+const labelDot = document.getElementById('label-dot');
+const descInput = document.getElementById('description');
 const saveBtn = document.getElementById('save');
 const skipBtn = document.getElementById('skip');
+const labelsSummary = document.getElementById('labels-summary');
+const labelsList = document.getElementById('labels-list');
+const newLabelName = document.getElementById('new-label-name');
+const newLabelColor = document.getElementById('new-label-color');
+const addLabelBtn = document.getElementById('add-label');
 const sessionsList = document.getElementById('sessions-list');
 
-let current = { state: 'IDLE', accumulated_seconds: 0, current_segment_start: null };
+const NONE_COLOR = '#777777';
+const DESCRIPTION_DEBOUNCE_MS = 400;
+
+let current = {
+  state: 'IDLE', accumulated_seconds: 0, current_segment_start: null,
+  selected_label: '', selected_description: '', labels: [],
+};
 let tickHandle = null;
+let descHandle = null;
+let renderedLabelsKey = null;
 
 function formatDuration(totalSeconds) {
   totalSeconds = Math.max(0, Math.round(totalSeconds));
@@ -96,6 +194,75 @@ function liveElapsed() {
   return seconds;
 }
 
+// The device wants #RRGGBBAA; CSS and <input type=color> want #RRGGBB.
+function cssColor(color) {
+  return color ? color.slice(0, 7) : NONE_COLOR;
+}
+
+function colorForLabel(name) {
+  const match = (current.labels || []).find((l) => l.name === name);
+  return match ? cssColor(match.color) : NONE_COLOR;
+}
+
+function renderLabelPicker() {
+  const labels = current.labels || [];
+  // Only rebuild the <option> list when the label set actually changed, so an open
+  // dropdown isn't yanked out from under the user on every incoming snapshot.
+  const key = JSON.stringify(labels);
+  if (key !== renderedLabelsKey) {
+    renderedLabelsKey = key;
+    labelSelect.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '— no label —';
+    labelSelect.appendChild(none);
+    for (const label of labels) {
+      const option = document.createElement('option');
+      option.value = label.name;
+      option.textContent = label.name;
+      labelSelect.appendChild(option);
+    }
+  }
+  labelSelect.value = current.selected_label || '';
+  labelDot.style.background = colorForLabel(current.selected_label);
+}
+
+function renderDescription() {
+  // Never overwrite the field while it's being typed in - a broadcast landing
+  // mid-keystroke would eat the character just entered.
+  if (document.activeElement !== descInput) {
+    descInput.value = current.selected_description || '';
+  }
+}
+
+function renderLabelsManager() {
+  const labels = current.labels || [];
+  labelsSummary.textContent = `Labels (${labels.length})`;
+
+  labelsList.innerHTML = '';
+  for (const label of labels) {
+    const li = document.createElement('li');
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = cssColor(label.color);
+    dot.setAttribute('aria-hidden', 'true');
+
+    const name = document.createElement('span');
+    name.className = 'name body';
+    name.textContent = label.name;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', `Delete label ${label.name}`);
+    remove.addEventListener('click', () => deleteLabel(label.name));
+
+    li.append(dot, name, remove);
+    labelsList.appendChild(li);
+  }
+}
+
 function render() {
   stateEl.textContent = current.state.replace('_', ' ').toLowerCase();
 
@@ -105,16 +272,20 @@ function render() {
     elapsedEl.textContent = formatDuration(liveElapsed());
   }
 
+  renderLabelPicker();
+  renderDescription();
+  renderLabelsManager();
+
   controlsEl.style.display = current.state === 'PENDING_LABEL' ? 'none' : 'flex';
   labelPanel.style.display = current.state === 'PENDING_LABEL' ? 'flex' : 'none';
 
+  if (tickHandle) clearInterval(tickHandle);
   if (current.state === 'PENDING_LABEL') return;
 
   primaryBtn.textContent = current.state === 'RUNNING' ? 'Pause'
     : current.state === 'PAUSED' ? 'Resume' : 'Start';
   stopBtn.disabled = current.state === 'IDLE';
 
-  if (tickHandle) clearInterval(tickHandle);
   if (current.state === 'RUNNING') {
     tickHandle = setInterval(() => { elapsedEl.textContent = formatDuration(liveElapsed()); }, 250);
   }
@@ -136,27 +307,95 @@ async function postAction(path, body) {
 
 primaryBtn.addEventListener('click', () => postAction('/api/actions/start-toggle'));
 stopBtn.addEventListener('click', () => postAction('/api/actions/stop'));
-saveBtn.addEventListener('click', () => {
-  postAction('/api/actions/label', { label: labelInput.value });
-  labelInput.value = '';
+labelSelect.addEventListener('change', () => {
+  postAction('/api/actions/select-label', { label: labelSelect.value });
 });
-skipBtn.addEventListener('click', () => {
-  postAction('/api/actions/label', { label: '' });
-  labelInput.value = '';
+
+// Typing shouldn't post per keystroke; the server persists whatever lands last.
+descInput.addEventListener('input', () => {
+  if (descHandle) clearTimeout(descHandle);
+  descHandle = setTimeout(() => {
+    postAction('/api/actions/select-description', { description: descInput.value });
+  }, DESCRIPTION_DEBOUNCE_MS);
 });
+descInput.addEventListener('blur', () => {
+  if (descHandle) clearTimeout(descHandle);
+  postAction('/api/actions/select-description', { description: descInput.value });
+});
+
+function saveSession(label) {
+  if (descHandle) clearTimeout(descHandle);
+  // Send both explicitly rather than relying on the debounced select-description
+  // call having landed first.
+  postAction('/api/actions/label', { label, description: descInput.value });
+}
+
+saveBtn.addEventListener('click', () => saveSession(labelSelect.value));
+// Skip drops the label only - silently discarding a description you just typed
+// would be worse than filing it unlabeled.
+skipBtn.addEventListener('click', () => saveSession(''));
+descInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && current.state === 'PENDING_LABEL') saveSession(labelSelect.value);
+});
+
+async function refreshState() {
+  const res = await fetch('/api/state');
+  applySnapshot(await res.json());
+}
+
+async function addLabel() {
+  const name = newLabelName.value.trim();
+  if (!name) return;
+  await fetch('/api/labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, color: newLabelColor.value }),
+  });
+  newLabelName.value = '';
+  refreshState();
+}
+
+async function deleteLabel(name) {
+  await fetch(`/api/labels?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+  refreshState();
+}
+
+addLabelBtn.addEventListener('click', addLabel);
+newLabelName.addEventListener('keydown', (e) => { if (e.key === 'Enter') addLabel(); });
 
 function renderSessions(sessions) {
   sessionsList.innerHTML = '';
   for (const s of sessions) {
     const li = document.createElement('li');
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.textContent = s.label || '(no label)';
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = colorForLabel(s.label);
+    dot.setAttribute('aria-hidden', 'true');
+
+    const body = document.createElement('div');
+    body.className = 'body';
+
+    const head = document.createElement('div');
+    head.className = 'head';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = s.label || '(no label)';
     const meta = document.createElement('span');
     meta.className = 'meta';
     meta.textContent = formatDuration(s.total_active_seconds);
-    li.appendChild(label);
-    li.appendChild(meta);
+    head.append(name, meta);
+    body.appendChild(head);
+
+    // Sessions logged before descriptions existed have no such key.
+    if (s.description) {
+      const desc = document.createElement('p');
+      desc.className = 'desc';
+      desc.textContent = s.description;
+      body.appendChild(desc);
+    }
+
+    li.append(dot, body);
     sessionsList.appendChild(li);
   }
 }
@@ -167,8 +406,7 @@ async function loadSessions() {
 }
 
 async function init() {
-  const res = await fetch('/api/state');
-  applySnapshot(await res.json());
+  await refreshState();
   loadSessions();
 
   const source = new EventSource('/api/events');
